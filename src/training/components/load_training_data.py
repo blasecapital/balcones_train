@@ -5,7 +5,6 @@ import sqlite3
 import pandas as pd
 
 from utils import EnvLoader, public_method
-from config import config
 
 
 class LoadTrainingData:
@@ -13,9 +12,17 @@ class LoadTrainingData:
         """
         Initialize the LoadData class with configuration and utility modules.
         """
-        self.source_query = config.get('source_query')
-        self.primary_key = config.get('primary_key')
+        # Initialize the EnvLoader
         self.env_loader = EnvLoader()
+        
+        # Retrieve the path to the config module using the env_loader
+        config_path = self.env_loader.get("DATA_TRAIN_CONFIG")
+        
+        # Dynamically import the config module
+        self.config = self.env_loader.load_config_module(config_path)
+        
+        self.source_query = self.config.get('source_query')
+        self.primary_key = self.config.get('primary_key')
 
     def _load_from_database(self, db_path, query):
         """

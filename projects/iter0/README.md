@@ -1,6 +1,6 @@
 # iter0
 ## Overview
-This project uses 48-hours of standardized hourly exchange rate OHLC's as features and sets SL and TP based on volatility but maintains a 2:1 SL-to-TP width. The goal is to create a baseline project which assists in the model training framework development while providing a foundation to build upon. This project will fully document each step through data preparation, data cleaning, model training, model evaluation, and model explainability. 
+This project uses 48-hours of standardized hourly exchange rate OHLC's as features and sets SL and TP based on volatility but maintains a 1:2 SL-to-TP width. The goal is to create a baseline project which assists in the model training framework development while providing a foundation to build upon. This project will fully document each step through data preparation, data cleaning, model training, model evaluation, and model explainability. 
 
 ## Installation
 Utilize each step's .yml file to create the appropriate environment. Training, evaluation, and explainability will require tensorflow-gpu for fast inference.

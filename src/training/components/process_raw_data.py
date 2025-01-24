@@ -5,10 +5,10 @@ import pandas as pd
 import numpy as np
 import importlib.util
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.preprocessing import RobustScaler, StandardScaler
 import joblib
 import os
+from typing import Union
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -90,7 +90,7 @@ class ProcessRawData:
         # Return the updated DataFrame dictionary
         return self.df_dict
         
-    def _get_dataframes(self, dfs: str | list | str = "all"):
+    def _get_dataframes(self, dfs: Union[str, list] = "all"):
             """
             Helper function to retrieve the DataFrames to process.
             """
@@ -104,7 +104,7 @@ class ProcessRawData:
                 raise ValueError("Invalid dfs argument. Must be 'all', a string,"
                                  " or a list.")
 
-    def _get_df_columns(self, df, columns: str | list | str = "all"):
+    def _get_df_columns(self, df, columns: Union[str, list, str] = "all"):
         """
         Helper function to retrieve the columns to process.
         """
@@ -156,15 +156,17 @@ class ProcessRawData:
                 plt.figure(figsize=(8, 6))
                 if df[col].dtype == "object" or len(df[col].unique()) < 10:
                     # Categorical data: Histogram
-                    sns.histplot(df[col], kde=False)
+                    plt.hist(df[col].dropna(), bins=10, edgecolor="black")
                     plt.title(f"Histogram for {col} in {name}")
+                    plt.xlabel(col)
+                    plt.ylabel("Frequency")
                 else:
-                    # Numerical data: Violin plot
-                    sns.violinplot(y=df[col])
-                    plt.title(f"Violin Plot for {col} in {name}")
-
-                plt.xlabel(col)
-                plt.ylabel("Frequency" if df[col].dtype == "object" else "Value")
+                    # Numerical data: Violin-like plot (using Matplotlib's boxplot for simplicity)
+                    plt.boxplot(df[col].dropna(), vert=False)
+                    plt.title(f"Box Plot for {col} in {name}")
+                    plt.xlabel("Value")
+    
+                plt.tight_layout()
                 plt.show()
 
     @public_method

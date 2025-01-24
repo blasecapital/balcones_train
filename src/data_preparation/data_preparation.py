@@ -28,10 +28,6 @@ def data_preparation(features=False, targets=True):
     
     if targets:
         # Load base target data, create targets, and store them
-        #target_df = ld.load_data(mode='targets')
-        #ct = CreateTargets(target_df)
-        #target_df = ct.create_targets()
-        #ct.store_targets(target_df)
         ct = CreateTargets()
         ct.calculate_and_store_targets()
     
