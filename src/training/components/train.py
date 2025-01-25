@@ -11,8 +11,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-from config import config
-from utils import public_method
+from utils import EnvLoader, public_method
 
 
 class Train:
@@ -20,8 +19,17 @@ class Train:
         # The initialized object
         self.training_data = training_data
         
+        # Initialize the EnvLoader
+        self.env_loader = EnvLoader()
+        
+        # Retrieve the path to the config module using the env_loader
+        config_path = self.env_loader.get("DATA_TRAIN_CONFIG")
+        
+        # Dynamically import the config module
+        self.config = self.env_loader.load_config_module(config_path)
+        
         # Initialize config attributes
-        self.model_specs = config.get("model_specs")
+        self.model_specs = self.config.get("model_specs")
         
     def _import_function(self, module_path, function_name):
         """
@@ -42,12 +50,25 @@ class Train:
         """
         Load a model defined in the model_specs.
         """
-        input_dim = self.training_data['features'][model_name]['train'].shape[1]
+        # Retrieve the shape of the training data
+        input_shape = self.training_data['features'][model_name]['train'].shape[1:]  # Exclude batch dimension
         
         spec = self.model_specs[model_name]
         model_function = self._import_function(spec["model_modules_path"], spec["model_function"])
-        return model_function(input_dim)
     
+        # Pass the correct input shape to the model function
+        if len(input_shape) == 1:
+            # Flattened data (2D input)
+            return model_function(input_dim=input_shape[0])
+        elif len(input_shape) == 2:
+            # Time-series or 3D data
+            timesteps, features = input_shape
+            spec = self.model_specs[model_name]
+            model_function = self._import_function(spec["model_modules_path"], spec["model_function"])
+            return model_function(timesteps=timesteps, features=features)
+        else:
+            raise ValueError(f"Unsupported input shape: {input_shape}. Expected 2D or 3D data.")
+
     def _compile_model(self, model, model_name):
         """
         Compile the model based on its specifications.
@@ -214,7 +235,7 @@ class Train:
             raise Exception(f"The specified path {save_config_dir} is not a valid directory.")
     
         # Construct the file path for the config file
-        save_file_path = os.path.join(save_config_dir, 'config.py')
+        save_file_path = os.path.join(save_config_dir, 'requirements.py')
                         
         # Collect the process_data_config
         process_data_config = self._collect_preprocessing_config()
@@ -223,7 +244,7 @@ class Train:
             file.write("# Auto-generated configuration file\n\n")
             file.write("# Main configuration\n")
             file.write("config = ")
-            file.write(repr(config))  # Write the dictionary as a string
+            file.write(repr(self.config))  # Write the dictionary as a string
             file.write("\n\n")
             
             file.write("# Preprocessing configuration\n")

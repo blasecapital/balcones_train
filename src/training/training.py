@@ -15,13 +15,12 @@ def training():
     """
     ltd = LoadTrainingData()
     raw_data = ltd.load_data()
-    print(raw_data)
-    '''
+    
     prd = ProcessRawData(raw_data)
     training_data = prd.process_raw_data(
         filter_indices=True,
         engineering=True,
-        engineering_mode='feature',
+        engineering_mode='target',
         encode_categories=False,
         prepare_features=True,
         prepare_targets=True
@@ -29,7 +28,6 @@ def training():
     
     train = Train(training_data)
     train.train_models()
-    '''
     
 if __name__ == "__main__":
     training()

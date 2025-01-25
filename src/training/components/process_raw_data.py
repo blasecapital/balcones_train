@@ -13,8 +13,7 @@ from typing import Union
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-from config import config
-from utils import public_method
+from utils import EnvLoader, public_method
 
 
 class ProcessRawData:
@@ -22,17 +21,26 @@ class ProcessRawData:
         # The initialized object
         self.df_dict = df_dict
         
+        # Initialize the EnvLoader
+        self.env_loader = EnvLoader()
+        
+        # Retrieve the path to the config module using the env_loader
+        config_path = self.env_loader.get("DATA_TRAIN_CONFIG")
+        
+        # Dynamically import the config module
+        self.config = self.env_loader.load_config_module(config_path)
+        
         # Config specs
-        self.module_path = config.get("data_processing_modules_path")
-        self.filter_function = config.get("filter_function")
-        self.primary_key = config.get("primary_key")
-        self.feature_eng_list = config.get("feature_engineering")
-        self.target_eng_list = config.get("target_engineering")
-        self.features = config.get("define_features")
-        self.targets = config.get("define_targets")
-        self.category_index = config.get("category_index")
-        self.scaler_save_path = config.get("scaler_save_path")
-        self.reshape = config.get("reshape")
+        self.module_path = self.config.get("data_processing_modules_path")
+        self.filter_function = self.config.get("filter_function")
+        self.primary_key = self.config.get("primary_key")
+        self.feature_eng_list = self.config.get("feature_engineering")
+        self.target_eng_list = self.config.get("target_engineering")
+        self.features = self.config.get("define_features")
+        self.targets = self.config.get("define_targets")
+        self.category_index = self.config.get("category_index")
+        self.scaler_save_path = self.config.get("scaler_save_path")
+        self.reshape = self.config.get("reshape")
         
     def _import_function(self, function_name):
         """
@@ -385,7 +393,7 @@ class ProcessRawData:
     
         # Automatic calculation for `samples` if set to -1
         if samples == -1:
-            samples = feature_arr.shape[0] // timesteps
+            samples = feature_arr.size // (timesteps * features)
     
         # Validate the reshape dimensions
         expected_size = samples * timesteps * features
