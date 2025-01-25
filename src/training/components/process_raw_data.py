@@ -630,4 +630,3 @@ class ProcessRawData:
         }
         
         return training_data
-        
