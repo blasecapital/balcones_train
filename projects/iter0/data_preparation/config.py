@@ -8,7 +8,7 @@ config = {
     "pair_query": {"BASE_DATABASE": """
                    SELECT DISTINCT(pair) FROM hourly_exchange_rates
                    """}, # Key: path to database, Value: query
-    "pair_list": ["AUDUSD", "EURUSD"], # Explicitly list all the pairs to ETL
+    "pair_list": ["AUDUSD"], # Explicitly list all the pairs to ETL
     "df_batch": 4, # Only if load_mode is batch
     
     "group_by": "pair", # Options: "pair" or None
@@ -19,7 +19,6 @@ config = {
     "base_query": """
         SELECT * from hourly_exchange_rates
         WHERE pair IN ({placeholders})
-        AND date > '2023-01-01'
         """,
     "feature_source": "FEATURE_DATABASE",
     "feature_query": """

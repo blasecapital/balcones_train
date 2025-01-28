@@ -13,13 +13,14 @@ from typing import Union
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+from .load_training_data import LoadTrainingData
 from utils import EnvLoader, public_method
 
 
 class ProcessRawData:
-    def __init__(self, df_dict: dict):
+    def __init__(self):#, df_dict: dict):
         # The initialized object
-        self.df_dict = df_dict
+        #self.df_dict = df_dict
         
         # Initialize the EnvLoader
         self.env_loader = EnvLoader()
@@ -31,6 +32,9 @@ class ProcessRawData:
         self.config = self.env_loader.load_config_module(config_path)
         
         # Config specs
+        self.source_query = self.config.get('source_query')
+        self.project_dir = self.config.get('project_directory')
+        
         self.module_path = self.config.get("data_processing_modules_path")
         self.filter_function = self.config.get("filter_function")
         self.primary_key = self.config.get("primary_key")
@@ -42,6 +46,10 @@ class ProcessRawData:
         self.scaler_save_path = self.config.get("scaler_save_path")
         self.reshape = self.config.get("reshape")
         
+        # Initialize data loader
+        self.ltd = LoadTrainingData()
+        
+    ### FUNCTIONS WHICH WILL STILL WORK WITH CHUNKING REVISION
     def _import_function(self, function_name):
         """
         Dynamically import a module specified in `self.module_path` and 
@@ -57,6 +65,383 @@ class ProcessRawData:
         
         return filter_function
     
+    ### NEW PROCESS
+    def _get_progress_log(self, key):
+        """
+        Retrieve the progress log for the specified key. If the log does not exist, initialize it.
+    
+        Args:
+            key (str): The key identifying the dataset being processed.
+    
+        Returns:
+            dict: The progress log for the specified key.
+        """
+        if not hasattr(self, "_progress_logs"):
+            self._progress_logs = {}  # Initialize a dictionary to store progress logs
+    
+        if key not in self._progress_logs:
+            # Initialize the progress log for the given key
+            self._progress_logs[key] = {
+                "running_sum": {},
+                "running_square_sum": {},
+                "running_count": {},
+                "running_min": {},
+                "running_max": {},
+                "bin_edges": {},
+                "bin_frequencies": {},
+                "chunk_stats": {},
+                "bad_keys": [],
+                "final_stats": None,
+            }
+        return self._progress_logs[key]
+    
+    def _update_progress_log(self, key, progress_log):
+        """
+        Update the stored progress log for the specified key.
+    
+        Args:
+            key (str): The key identifying the dataset being processed.
+            progress_log (dict): The updated progress log.
+        """
+        if not hasattr(self, "_progress_logs"):
+            self._progress_logs = {}  # Initialize if not already done
+    
+        # Update the progress log for the given key
+        self._progress_logs[key] = progress_log
+        
+    def _update_bin_frequencies(self, feature, data, bin_edges, bin_frequencies):
+        """
+        Update bin frequencies for a feature based on the current chunk of data.
+    
+        Args:
+            feature (str): The feature/column name.
+            data (DataFrame): The current chunk of data.
+            bin_edges (array): The edges of the bins.
+            bin_frequencies (dict): A dictionary storing the frequencies of values in each bin,
+                                    including underflow and overflow bins.
+        """
+        if feature not in data.columns:
+            print(f"Feature '{feature}' not found in data columns.")
+            return
+    
+        # Extract values for the feature
+        values = data[feature].dropna().values  # Convert to numpy array to ensure compatibility
+    
+        # Digitize the values into bins
+        bin_indices = np.digitize(values, bin_edges, right=False)
+    
+        # Ensure underflow and overflow bins are initialized
+        bin_frequencies.setdefault("underflow", 0)
+        bin_frequencies.setdefault("overflow", 0)
+    
+        # Initialize regular bin frequencies as needed
+        for i in range(len(bin_edges) - 1):
+            bin_frequencies.setdefault(i, 0)
+    
+        # Update bin frequencies
+        for value, idx in zip(values, bin_indices):
+            if idx == 0:
+                # Value is below the smallest bin
+                bin_frequencies["underflow"] += 1
+            elif idx > len(bin_edges) - 1:
+                # Value is above the largest bin
+                bin_frequencies["overflow"] += 1
+            else:
+                # Value falls within a valid bin
+                bin_frequencies[idx - 1] += 1
+    
+    def _calculate_percentiles(self, feature, bin_edges, bin_frequencies, total_count):
+        """
+        Calculate percentiles (25%, 50%, 75%) using binned data.
+        """
+        # Debug: Print initial inputs
+        print(f"Feature: {feature}")
+        print(f"Bin Edges: {bin_edges}")
+        print(f"Bin Frequencies: {bin_frequencies}")
+        print(f"Total Count: {total_count}")
+    
+        # Compute cumulative frequency
+        cumulative_frequency = np.cumsum([bin_frequencies.get(i, 0) for i in range(len(bin_edges) - 1)])
+        
+        # Debug: Print cumulative frequency
+        print(f"Cumulative Frequency: {cumulative_frequency}")
+    
+        percentiles = {}
+    
+        for p, label in [(0.25, "25%"), (0.5, "50%"), (0.75, "75%")]:
+            target_count = p * total_count
+            bin_idx = np.searchsorted(cumulative_frequency, target_count)
+    
+            # Debug: Print target count and bin index
+            print(f"Percentile: {label}, Target Count: {target_count}, Bin Index: {bin_idx}")
+    
+            if bin_idx == 0:
+                # Percentile lies in the first bin
+                percentiles[label] = bin_edges[0]
+            elif bin_idx >= len(bin_edges) - 1:
+                # Percentile lies in the last bin
+                percentiles[label] = bin_edges[-1]
+            else:
+                # Interpolate within the bin
+                bin_start = bin_edges[bin_idx - 1]
+                bin_end = bin_edges[bin_idx]
+                bin_frequency = bin_frequencies.get(bin_idx - 1, 0)
+                prev_cumulative = cumulative_frequency[bin_idx - 1]
+    
+                # Debug: Print bin details for interpolation
+                print(f"Interpolating Percentile: {label}")
+                print(f"Bin Start: {bin_start}, Bin End: {bin_end}, Bin Frequency: {bin_frequency}, Previous Cumulative: {prev_cumulative}")
+    
+                if bin_frequency > 0:
+                    interpolated_value = bin_start + (
+                        (target_count - prev_cumulative) / bin_frequency
+                    ) * (bin_end - bin_start)
+                    percentiles[label] = interpolated_value
+                else:
+                    # Fallback if no frequency in the bin
+                    percentiles[label] = bin_start
+    
+        # Debug: Print final percentiles
+        print(f"Calculated Percentiles for {feature}: {percentiles}")
+    
+        return percentiles
+    
+    def _finalize_describe_report(self, key, progress_log):
+        """
+        Finalize and generate aggregated statistics after processing all chunks.
+        """
+        final_stats = {}
+        for feature in progress_log["running_sum"]:
+            count = progress_log["running_count"][feature]
+            mean = progress_log["running_sum"][feature] / count
+            variance = (
+                progress_log["running_square_sum"][feature] / count - mean ** 2
+            )  # Calculate variance
+            std_dev = np.sqrt(variance)  # Calculate standard deviation
+            min_value = progress_log["running_min"][feature]
+            max_value = progress_log["running_max"][feature]
+    
+            # Calculate percentiles from binned data
+            percentiles = self._calculate_percentiles(
+                feature,
+                progress_log["bin_edges"][feature],
+                progress_log["bin_frequencies"],
+                count,
+            )
+    
+            final_stats[feature] = {
+                "count": count,
+                "mean": mean,
+                "std": std_dev,
+                "min": min_value,
+                "25%": percentiles.get("25%"),
+                "50%": percentiles.get("50%"),
+                "75%": percentiles.get("75%"),
+                "max": max_value,
+            }
+    
+        # Store final stats in progress log
+        progress_log["final_stats"] = final_stats
+        self._update_progress_log(key, progress_log)
+        print(final_stats)
+        return final_stats
+    
+    def _describe_features(self, key, chunk_key, data, finish):
+        """
+        Calculate and store statistics for features in the current data chunk.
+        Aggregate statistics for accurate reporting across chunks.
+        """
+        progress_log = self._get_progress_log(key)
+    
+        # Calculate per-chunk statistics
+        chunk_stats = data.describe().T  # Transpose for feature-wise stats
+        progress_log["chunk_stats"][chunk_key[0]] = chunk_stats.to_dict()
+    
+        # Update running aggregates
+        if "running_sum" not in progress_log:
+            progress_log["running_sum"] = {}
+            progress_log["running_square_sum"] = {}  # For variance
+            progress_log["running_count"] = {}
+            progress_log["running_min"] = {}
+            progress_log["running_max"] = {}
+            progress_log["bin_edges"] = {}
+            progress_log["bin_frequencies"] = {}
+    
+        for feature in chunk_stats.index:
+            if feature not in progress_log["running_sum"]:
+                # Initialize running aggregates for this feature
+                progress_log["running_sum"][feature] = 0
+                progress_log["running_square_sum"][feature] = 0
+                progress_log["running_count"][feature] = 0
+                progress_log["running_min"][feature] = float("inf")
+                progress_log["running_max"][feature] = float("-inf")
+    
+                # Initialize bins (e.g., 20 bins)
+                min_val, max_val = chunk_stats.loc[feature, "min"], chunk_stats.loc[feature, "max"]
+                progress_log["bin_edges"][feature] = np.linspace(min_val, max_val, num=21)
+                progress_log["bin_frequencies"][feature] = [0] * 20
+    
+            # Update running aggregates
+            progress_log["running_sum"][feature] += (
+                chunk_stats.loc[feature, "mean"] * chunk_stats.loc[feature, "count"]
+            )
+            progress_log["running_square_sum"][feature] += (
+                chunk_stats.loc[feature, "std"] ** 2 + chunk_stats.loc[feature, "mean"] ** 2
+            ) * chunk_stats.loc[feature, "count"]
+            progress_log["running_count"][feature] += chunk_stats.loc[feature, "count"]
+            progress_log["running_min"][feature] = min(
+                progress_log["running_min"][feature], chunk_stats.loc[feature, "min"]
+            )
+            progress_log["running_max"][feature] = max(
+                progress_log["running_max"][feature], chunk_stats.loc[feature, "max"]
+            )
+    
+            # Update bin frequencies for the current chunk
+            self._update_bin_frequencies(
+                feature, data, progress_log["bin_edges"][feature], progress_log["bin_frequencies"]
+            )
+    
+        # Update progress log
+        self._update_progress_log(key, progress_log)
+    
+        # If it's the last chunk, finalize the aggregated report
+        if finish:
+            self._finalize_describe_report(key, progress_log)
+    
+    def _describe_targets(self, data_keys):
+        """
+        """
+        
+    def _plot_features(self, data_keys):
+        """
+        """
+        
+    def _clean(self):
+        """
+        Delete features and targets from the original databse using the filter
+        function.
+        """
+        
+    def _align(self):
+        """
+        """
+        
+    def _remove_primary_key(self, data):
+        """
+        Remove the primary key from the dataframe.
+        """
+        if not hasattr(self, "primary_key") or not self.primary_key:
+            raise AttributeError("Primary key is not defined or empty.")
+    
+        # Ensure primary_key columns exist in the dataframe before dropping
+        missing_keys = [key for key in self.primary_key if key not in data.columns]
+        if missing_keys:
+            raise ValueError(f"Primary key columns not found in dataframe: {missing_keys}")
+    
+        # Drop the primary key columns
+        return data.drop(columns=self.primary_key)
+    
+    def _convert_to_numeric(self, data):
+        """
+        Convert column data from text to numeric.
+        """
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError("Input must be a pandas DataFrame.")
+    
+        # Attempt to convert all columns to numeric
+        for col in data.columns:
+            try:
+                data[col] = pd.to_numeric(data[col], errors="coerce")
+            except Exception as e:
+                print(f"Could not convert column '{col}' to numeric: {e}")
+    
+        return data
+        
+    @public_method
+    def clean_data(self,
+                   data_keys,
+                   describe_features=False,
+                   describe_targets=False,
+                   plot_features=False,
+                   clean=False):
+        """
+        Loop through the data keys and apply the selected functions to each
+        data set in chunks. Supports iterative evaluation and cleaning.
+        """
+        # Separate describe/plot phase from cleaning/aligning
+        if any([describe_features, describe_targets, plot_features]):
+            for key in data_keys:
+                progress_log = self._get_progress_log(key)
+                chunk_keys = self.ltd.chunk_keys(key)  # Determine chunk splits
+    
+                for idx, chunk_key in enumerate(chunk_keys):
+                    # Set finish to True for the last chunk
+                    finish = idx == len(chunk_keys) - 1
+                    
+                    data = self.ltd.load_chunk(key, chunk_key)
+                    data = self._remove_primary_key(data)
+                    data = self._convert_to_numeric(data)
+                    
+                    # Perform operations on the current chunk
+                    if describe_features:
+                        self._describe_features(key, chunk_key, data, finish)
+                    if describe_targets:
+                        self._describe_targets(key, chunk_key, data, finish)
+                    if plot_features:
+                        self._plot_features(key, chunk_key, data, finish)
+                    
+                    # Update progress log
+                    self._update_progress_log(key, progress_log)
+        
+        if clean:
+            progress_log = self._get_progress_log(key)
+            chunk_keys = self.ltd.chunk_keys(key)  # Determine chunk splits
+    
+            for idx, chunk_key in enumerate(chunk_keys):
+                # Set finish to True for the last chunk
+                finish = idx == len(chunk_keys) - 1
+    
+                data = self.ltd.load_chunk(key, chunk_key)
+                bad_keys = self._clean(key, chunk_key, data, finish)
+                if bad_keys:
+                    progress_log["bad_keys"].extend(bad_keys)
+                
+                # Update progress log
+                self._update_progress_log(key, progress_log)
+    
+            # Perform alignment after all chunks are processed
+            self._align(data_keys, progress_log)
+        
+    @public_method
+    def engineer(self, mode="all"):
+        """
+        Create new features or targets and add them to new database tables.
+        
+        Args:
+            mode = Options: all, feature, or target.
+        """
+        
+    @public_method
+    def encode_targets(self):
+        """
+        Use encoding logic to transform targets into numerical categories
+        or appropiately format regression-based targets.
+        """
+        
+    def _save_metadata(self):
+        """
+        Keep track of primary-key based splits, completed processes, etc.
+        """
+        
+    @public_method
+    def save_batches(self):
+        """
+        Split, type features and targets, scale and reshape features, and
+        save completely prepped data in batches to .np, .npy, or .hdf5 files
+        for efficient, iterative loading in model training.
+        """
+        
+    ### OLD FUNCTIONS
     @public_method
     def filter_indices(self):
         """
@@ -188,12 +573,22 @@ class ProcessRawData:
             columns (str | list): Columns to describe ('all', a single name, or a list of names).
         """
         describe_dfs = self._get_dataframes(dfs)
+        
+        # Set pandas options to display all columns
+        pd.set_option('display.max_columns', None)  # Show all columns
+        pd.set_option('display.max_rows', None)     # Show all rows for descriptive statistics
+        pd.set_option('display.width', 1000)       # Adjust the width to fit all columns
 
         for name, df in describe_dfs:
             print(f"\nDataFrame: {name} - Descriptive Statistics")
             df_columns = [col for col in self._get_df_columns(df, columns) 
                               if col not in self.primary_key]
             print(df[df_columns].describe(include="all"))
+            
+            # Reset pandas display options to default after processing
+        pd.reset_option('display.max_columns')
+        pd.reset_option('display.max_rows')
+        pd.reset_option('display.width')
         
     @public_method
     def engineering(self, mode='all'):

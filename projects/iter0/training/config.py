@@ -3,22 +3,22 @@
 
 config = {
     # Arguements for load_training_data
-    # Provide the database path and the query as a set for each feature file
-    "source_query": [("FEATURE_DATABASE", 
-                      """
-                      SELECT 
-                        hf.*, t.target, t.hours_passed, t.buy_sl_time, t.sell_sl_time
-                      FROM 
-                        hourly_features hf
-                      INNER JOIN 
-                        targets t
-                      ON 
-                        hf.pair = t.pair AND hf.date = t.date
-                      WHERE 
-                        hf.pair = 'AUDUSD' AND hf.date > '2023-06-01';
-                      """,
-                      "model1")
-                      ],
+    # Name the data key (name of feature set or target set), write the .env
+    # reference name for the source db_path and the associated query
+    "source_query": {
+        "iter0_hourly_features" : ("FEATURE_DATABASE", 
+         """
+         SELECT * FROM hourly_features
+         WHERE pair = 'AUDUSD'
+         """),
+         "iter0_targets" : ("TARGET_DATABASE",
+         """
+         SELECT * FROM targets
+         WHERE pair = 'AUDUSD'
+         """)},
+         
+    "project_directory": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt'
+                          r'\deep_learning\projects\iter0\training'),
     
     # Use accross modules
     "primary_key": ['date', 'pair'],
