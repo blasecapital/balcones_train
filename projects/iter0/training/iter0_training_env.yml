@@ -83,6 +83,7 @@ dependencies:
   - matplotlib-inline=0.1.7=pyhd8ed1ab_1
   - mkl=2021.4.0=h0e2418a_729
   - mkl-service=2.4.0=py39h6b0492b_0
+  - mplfinance=0.12.9b7=pyhd8ed1ab_0
   - munkres=1.1.4=pyh9f0ad1d_0
   - nest-asyncio=1.6.0=pyhd8ed1ab_1
   - numpy=1.19.5=py39h6635163_3
@@ -124,6 +125,7 @@ dependencies:
   - toml=0.10.2=pyhd8ed1ab_1
   - tomli=2.2.1=pyhd8ed1ab_1
   - tornado=6.4.2=py39ha55e580_0
+  - tqdm=4.67.1=pyhd8ed1ab_1
   - traitlets=5.14.3=pyhd8ed1ab_1
   - tzdata=2025a=h78e105d_0
   - ucrt=10.0.22621.0=h57928b3_1

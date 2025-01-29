@@ -9,7 +9,8 @@ config = {
         "iter0_hourly_features" : ("FEATURE_DATABASE", 
          """
          SELECT * FROM hourly_features
-         WHERE pair = 'AUDUSD'
+         WHERE pair IN ('AUDUSD', 'EURUSD')
+         ORDER BY pair, date
          """),
          "iter0_targets" : ("TARGET_DATABASE",
          """

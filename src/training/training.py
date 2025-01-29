@@ -19,9 +19,11 @@ def training(clean=True):
     if clean:
         prd.clean_data(
             data_keys=['iter0_hourly_features'],
-            describe_features=True,
+            describe_features=False,
             describe_targets=False,
-            plot_features=False,
+            plot_features=True,
+            plot_mode='rate',
+            plot_skip=4,
             clean=False
             )
         
