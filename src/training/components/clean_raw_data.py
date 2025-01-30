@@ -5,15 +5,12 @@ import pandas as pd
 import numpy as np
 import importlib.util
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import RobustScaler, StandardScaler
-import joblib
-import os
-from typing import Union
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 import re
 import mplfinance as mpf
+import os
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -39,7 +36,8 @@ class CleanRawData:
         self.project_dir = self.config.get('project_directory')
         
         self.module_path = self.config.get("data_processing_modules_path")
-        self.filter_function = self.config.get("filter_function")
+        self.clean_functions = self.config.get("clean_functions")
+        self.bad_keys_path = self.config.get("bad_keys_path")
         self.primary_key = self.config.get("primary_key")
         self.feature_eng_list = self.config.get("feature_engineering")
         self.target_eng_list = self.config.get("target_engineering")
@@ -51,24 +49,7 @@ class CleanRawData:
         
         # Initialize data loader
         self.ltd = LoadTrainingData()
-        
-    ### FUNCTIONS WHICH WILL STILL WORK WITH CHUNKING REVISION
-    def _import_function(self, function_name):
-        """
-        Dynamically import a module specified in `self.module_path` and 
-        return the function from the arg.
-        """
-        spec = importlib.util.spec_from_file_location(
-            "module", self.module_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
     
-        # Access the specified filter function dynamically
-        filter_function = getattr(module, function_name)
-        
-        return filter_function
-    
-    ### NEW PROCESS
     def _get_progress_log(self, key):
         """
         Retrieve the progress log for the specified key. If the log does not exist, initialize it.
@@ -718,17 +699,7 @@ class CleanRawData:
             if finish:
                 self._finalize_describe_report(key, progress_log)
                 self._plot_descriptive_stats(progress_log)
-        
-    def _clean(self):
-        """
-        Delete features and targets from the original databse using the filter
-        function.
-        """
-        
-    def _align(self):
-        """
-        """
-        
+ 
     def _collect_cols(self, key):
         """
         Collect the feature (column) names from the source query for a given key.
@@ -790,11 +761,14 @@ class CleanRawData:
         """
         if not isinstance(data, pd.DataFrame):
             raise ValueError("Input must be a pandas DataFrame.")
+            
+        # Columns to exclude from conversion
+        exclude_cols = {'target', 'date', 'pair'}
     
         # Attempt to convert all columns to numeric
         for col in data.columns:
             try:
-                if col == 'target':
+                if col in exclude_cols:
                     continue
                 data[col] = pd.to_numeric(data[col], errors="coerce")
             except Exception as e:
@@ -868,51 +842,81 @@ class CleanRawData:
                             self._plot_features(key, chunk_key, data, progress_log, 
                                                 bin_edges, col_list, finish, 
                                                 describe_features)
-    
-    def clean(self, data_keys):
-        """
-        """
-        for key in data_keys:
-            index_log = self._get_progress_log(key)
-            chunk_keys = self.ltd.chunk_keys(key)  # Determine chunk splits
-    
-            for idx, chunk_key in enumerate(chunk_keys):
-                # Set finish to True for the last chunk
-                finish = idx == len(chunk_keys) - 1
-    
-                data = self.ltd.load_chunk(key, chunk_key)
-                bad_keys = self._clean(key, chunk_key, data, finish)
-                if bad_keys:
-                    index_log["bad_keys"].extend(bad_keys)
-
-        # Perform alignment after all chunks are processed
-        self._align(data_keys, index_log)
         
-    @public_method
-    def engineer(self, mode="all"):
+    def _import_function(self, module_path, function_name):
         """
-        Create new features or targets and add them to new database tables.
+        Dynamically import a module specified in `self.module_path` and 
+        return the function from the arg.
+        """
+        spec = importlib.util.spec_from_file_location(
+            "module", self.module_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    
+        # Access the specified filter function dynamically
+        clean_functions = getattr(module, function_name)
+        
+        return clean_functions
+    
+    def _save_bad_keys(self, key, bad_keys):
+        """
+        Save the bad_keys list to the self.bad_keys_path.
         
         Args:
-            mode = Options: all, feature, or target.
+            key (str): Name of clean_functions metadata.
+            bad_keys (list): List of bad primary keys.
         """
+        save_dir = self.bad_keys_path
+        os.makedirs(save_dir, exist_ok=True)  # Ensure directory exists
+    
+        save_path = os.path.join(save_dir, f"{key}_bad_keys.txt")
+        
+        if bad_keys:  # Only save if there are bad keys
+            with open(save_path, "w") as output:
+                output.write("\n".join(map(str, bad_keys)))  # Write keys line by line
+        else:
+            print(f"No bad keys found for {key}. Skipping save.")
         
     @public_method
-    def encode_targets(self):
+    def clean(self, data_keys=[]):
         """
-        Use encoding logic to transform targets into numerical categories
-        or appropiately format regression-based targets.
-        """
+        Apply the iteration's filter functions on their corresponding database
+        tables. Store the bad data's primary keys in a file for downstream
+        processing.
         
-    def _save_metadata(self):
+        Args:
+            data_keys (list): Default is empty and indicates all keys in the 
+                config['clean_functions'] dict should be processed. Specify
+                the keys in a list to only process select tables/data.
         """
-        Keep track of primary-key based splits, completed processes, etc.
-        """
+        def clean_steps(data_keys):
+            bad_keys_list = []
+            for key in data_keys:
+                print(f"Processing clean functions for: {key}")
+                # Determine chunk splits
+                chunk_keys = self.ltd.chunk_keys(key)  
+                # Import the filter function
+                module_path = self.env_loader.get(self.clean_functions[key][0])
+                function_name = self.clean_functions[key][2]
+                filter_function = self._import_function(module_path, function_name)
+                for idx, chunk_key in enumerate(chunk_keys):
+                    print(f"Processing chunk {chunk_key[0][0]} - {chunk_key[1][0]}...")
+                    data = self.ltd.load_chunk(key, chunk_key)
+                    data = self._convert_to_numeric(data)
+                    bad_keys = filter_function(data)
+                    bad_keys_list.extend(bad_keys)
+                self._save_bad_keys(key, bad_keys_list)
+        
+        # Process all keys in config's clean_functions
+        if not data_keys:
+            data_keys = list(self.clean_functions.keys())
+            
+        clean_steps(data_keys)
         
     @public_method
-    def save_batches(self):
+    def align(self):
         """
-        Split, type features and targets, scale and reshape features, and
-        save completely prepped data in batches to .np, .npy, or .hdf5 files
-        for efficient, iterative loading in model training.
-        """
+        Loop through the iteration's database tables, observations based on the
+        stored bad primary key file, and save or update the clean data tables.
+        """        
+        

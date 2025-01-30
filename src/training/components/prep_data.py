@@ -36,7 +36,7 @@ class PrepData:
         self.project_dir = self.config.get('project_directory')
         
         self.module_path = self.config.get("data_processing_modules_path")
-        self.filter_function = self.config.get("filter_function")
+        self.clean_functions = self.config.get("clean_functions")
         self.primary_key = self.config.get("primary_key")
         self.feature_eng_list = self.config.get("feature_engineering")
         self.target_eng_list = self.config.get("target_engineering")
@@ -48,6 +48,35 @@ class PrepData:
         
         # Initialize data loader
         self.ltd = LoadTrainingData()
+        
+    @public_method
+    def engineer(self, mode="all"):
+        """
+        Create new features or targets and add them to new database tables.
+        
+        Args:
+            mode = Options: all, feature, or target.
+        """
+        
+    @public_method
+    def encode_targets(self):
+        """
+        Use encoding logic to transform targets into numerical categories
+        or appropiately format regression-based targets.
+        """
+        
+    def _save_metadata(self):
+        """
+        Keep track of primary-key based splits, completed processes, etc.
+        """
+        
+    @public_method
+    def save_batches(self):
+        """
+        Split, type features and targets, scale and reshape features, and
+        save completely prepped data in batches to .np, .npy, or .hdf5 files
+        for efficient, iterative loading in model training.
+        """
         
     @public_method
     def prep(self):

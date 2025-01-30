@@ -5,6 +5,22 @@ import numpy as np
 import pandas as pd
 
 
+def filter_hourly(df):
+    """
+    Find rows in df['close_standard_1'] with values above 1.01 or below 0.99.
+    
+    Returns:
+        List of tuples containing ('pair', 'date') for matching rows.
+    """
+    if 'pair' not in df.columns or 'date' not in df.columns or 'close_standard_1' not in df.columns:
+        raise ValueError("DataFrame must contain 'pair', 'date', and 'close_standard_1' columns.")
+
+    # Apply filtering condition
+    filtered_rows = df[(df['close_standard_1'] > 1.01) | (df['close_standard_1'] < 0.99)]
+    # Return as a list of tuples (pair, date)
+    return list(zip(filtered_rows['pair'], filtered_rows['date']))
+    
+
 def filter_indices(df):
     """
     Identify problematic indices based on various conditions in the DataFrame.

@@ -31,7 +31,22 @@ config = {
                                      r'\Blase Capital Mgmt\deep_learning'
                                      r'\projects\iter0\training'
                                      r'\iter0_process_raw_data.py'),
-    "filter_function": 'filter_indices',
+    # Dictionary for collecting bad data primary keys, the dict key is a 
+    # metadata name and its item is a set containing the env key to the 
+    # database, a query for specifying the table and data to filter, and 
+    # the name of the filter function
+    "clean_functions": {
+        "iter0_hourly_features" : ("FEATURE_DATABASE", 
+         """
+         SELECT * FROM hourly_features
+         WHERE pair IN ('AUDUSD', 'EURUSD')
+         AND date > '2023-10-01'
+         ORDER BY pair, date
+         """,
+         'filter_hourly')
+        },
+    "bad_keys_path": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning'
+                      r'\projects\iter0\training\clean_data'),
     # (name of function, dataframe to apply to (key of df_dict))
     "feature_engineering": [('feature_engineering', 'model1')],
     "target_engineering": [('target_engineering', 'model1')],

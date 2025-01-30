@@ -4,6 +4,7 @@
 import sqlite3
 import pandas as pd
 import math
+import re
 
 from utils import EnvLoader, public_method
 
@@ -117,7 +118,7 @@ class LoadTrainingData:
     
         return chunk_keys
 
-    def load_chunk(self, key, chunk_key):
+    def load_chunk(self, key, chunk_key): 
         """
         Load a chunk of data based on the key and chunk key.
     
@@ -134,40 +135,41 @@ class LoadTrainingData:
         # Extract database and query information
         db_ref, base_query = self.source_query[key]
         db_path = self.env_loader.get(db_ref)  # Retrieve the database path from EnvLoader
-        
-        # Parse the base query to extract WHERE filtering logic
+    
+        # Strip and clean query
         base_query = base_query.strip().rstrip(";")
-        if "WHERE" in base_query.upper():
-            where_clause_start = base_query.upper().index("WHERE")
-            select_part = base_query[:where_clause_start].strip()
-            where_part = base_query[where_clause_start:].strip()
+    
+        # Ensure correct query formatting
+        query_upper = base_query.upper()
+    
+        # Check if `WHERE` already exists in base_query
+        where_exists = "WHERE" in query_upper
+        order_exists = "ORDER BY" in query_upper
+    
+        # Extract `ORDER BY` if present
+        if order_exists:
+            order_index = query_upper.index("ORDER BY")
+            base_query, order_part = base_query[:order_index].strip(), base_query[order_index:].strip()
         else:
-            select_part = base_query.strip()
-            where_part = ""  # No filtering logic present
+            order_part = "ORDER BY pair, date"
     
-        # Extract the column list or use "*" as default
-        if "SELECT" in select_part.upper() and "FROM" in select_part.upper():
-            column_part = select_part.split("FROM")[0].replace("SELECT", "").strip()
+        # Remove any existing date filtering** to prevent conflicts
+        base_query = re.sub(r"AND\s+date\s*[<>]=?\s*'\d{4}-\d{2}-\d{2}'", "", base_query, flags=re.IGNORECASE)
+    
+        # Construct new WHERE condition correctly
+        new_where_condition = "date > ? AND date <= ?"
+        if where_exists:
+            modified_query = f"{base_query} AND {new_where_condition}"
         else:
-            column_part = "*"  # Fallback to select all columns
+            modified_query = f"{base_query} WHERE {new_where_condition}"
     
-        # Extract table name from the base query
-        table_name = select_part.split("FROM")[1].strip()
+        # Reconstruct final query
+        final_query = f"{modified_query} {order_part}"
     
-        # Build the final query with the chunk key's date range
-        where_clause = f"""
-            {where_part} {"AND" if where_part else "WHERE"} 
-            date > ? AND date <= ?
-        """
-        final_query = f"""
-            SELECT {column_part}
-            FROM {table_name}
-            {where_clause}
-        """
-    
-        # Extract start_date and end_date, ensure they are strings
+        # Extract start_date and end_date as strings
         start_date = str(chunk_key[0][0])
         end_date = str(chunk_key[1][0])
+    
         with sqlite3.connect(db_path) as conn:
             data = pd.read_sql_query(final_query, conn, params=(start_date, end_date))
     
