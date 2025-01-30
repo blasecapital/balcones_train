@@ -1,10 +1,10 @@
 # training.py
 
 
-from components import ProcessRawData, Train #LoadTrainingData, 
+from components import CleanRawData, PrepData, Train
 
 
-def training(clean=True):
+def training(clean=True, prep=False, train=False):
     """
     Orchestrate the entire process of loading and preprocessing the training data,
     defining model architectures and custom functions, and saving results
@@ -13,38 +13,28 @@ def training(clean=True):
     LoadTrainingData:
         load_data returns a dictionary of all the feature DataFrames
     """
-    # Initialize the preprocess object
-    prd = ProcessRawData()
-        
     if clean:
-        prd.clean_data(
-            data_keys=['iter0_hourly_features'],
+        # Initialize the preprocess object
+        clean = CleanRawData()
+        
+        clean.inspect_data(
+            data_keys=['iter0_targets'],
             describe_features=False,
-            describe_targets=False,
-            plot_features=True,
-            plot_mode='rate',
-            plot_skip=4,
-            clean=False
+            describe_targets=True,
+            target_type='cat',
+            plot_features=False,
+            plot_mode='stat',
+            plot_skip=12
             )
         
-    '''
-    # Old process
-    ltd = LoadTrainingData()
-    raw_data = ltd.load_data()
+    if prep:
+        prep = PrepData()
+        prep.prep()
+        
+    if train:
+        train = Train()
+        
     
-    prd = ProcessRawData(raw_data)
-    training_data = prd.process_raw_data(
-        filter_indices=True,
-        engineering=True,
-        engineering_mode='target',
-        encode_categories=False,
-        prepare_features=True,
-        prepare_targets=True
-        )
-    
-    train = Train(training_data)
-    train.train_models()
-    '''
 if __name__ == "__main__":
     training()
     

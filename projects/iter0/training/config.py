@@ -10,6 +10,7 @@ config = {
          """
          SELECT * FROM hourly_features
          WHERE pair IN ('AUDUSD', 'EURUSD')
+         AND date > '2023-10-01'
          ORDER BY pair, date
          """),
          "iter0_targets" : ("TARGET_DATABASE",
