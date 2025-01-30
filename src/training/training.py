@@ -10,8 +10,34 @@ def training(clean=True, prep=False, train=False):
     defining model architectures and custom functions, and saving results
     and supporting files for model evaluation.
     
-    LoadTrainingData:
-        load_data returns a dictionary of all the feature DataFrames
+    Cleaning Process:
+        1) Inspect the features and targets to inform filter functions
+            a. Begin with the raw feature and target database(s)
+        2) Write the filter functions according to inspection observations
+        3) Run the clean.clean() module to collect bad primary keys
+        4) Run clean.align() module to save filtered data to clean database
+        5) Revise config's source_query's database reference to point to new,
+           clean database
+        6) Loop starting at step 1 if necessary
+            a. For step 1, change the database reference to the new, clean 
+               database to observe the previous filter process's impact
+            b. Ensure filter functions are holistic each time, the process
+               is designed to filter the entire, raw database
+               
+        Key args:
+            
+            - Source: /<main path>/projects/<iteration folder>/training/config.py
+            - Keys used: source_query, primary_key, data_processing_modules_path,
+              clean_functions, bad_keys_path, align
+            - Configure inspect, filter_keys, align flags according to your needs
+              each run
+              
+            Take care to update the config.py file every time you run the 
+            cleaning modules.
+    
+    Prep Process:
+        
+    Train Process:
     """
     if clean:
         # Initialize the preprocess object
@@ -19,22 +45,22 @@ def training(clean=True, prep=False, train=False):
         
         # Which clean processes do you want to run
         inspect = False
-        filter_keys = True
-        align = False
+        filter_keys = False
+        align = True
                 
         if inspect:        
             clean.inspect_data(
-                data_keys=['iter0_targets'],
+                data_keys=['iter0_hourly_features'],
                 describe_features=False,
-                describe_targets=True,
+                describe_targets=False,
                 target_type='cat',
-                plot_features=False,
+                plot_features=True,
                 plot_mode='rate',
                 plot_skip=12
                 )
             
         if filter_keys:
-            clean.clean(data_keys=['iter0_hourly_features'])
+            clean.clean()
             
         if align:
             clean.align()

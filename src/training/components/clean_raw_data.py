@@ -1,18 +1,19 @@
 # clean_raw_data.py
 
 
-import pandas as pd
-import numpy as np
-import importlib.util
-import matplotlib.pyplot as plt
-import sqlite3
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
-import re
-import mplfinance as mpf
 import os
-
+import re
+import sqlite3
 import warnings
+import importlib.util
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import mplfinance as mpf
+from tqdm import tqdm
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 from .load_training_data import LoadTrainingData
@@ -33,19 +34,10 @@ class CleanRawData:
         
         # Config specs
         self.source_query = self.config.get('source_query')
-        self.project_dir = self.config.get('project_directory')
-        
         self.module_path = self.config.get("data_processing_modules_path")
         self.clean_functions = self.config.get("clean_functions")
         self.bad_keys_path = self.config.get("bad_keys_path")
         self.primary_key = self.config.get("primary_key")
-        self.feature_eng_list = self.config.get("feature_engineering")
-        self.target_eng_list = self.config.get("target_engineering")
-        self.features = self.config.get("define_features")
-        self.targets = self.config.get("define_targets")
-        self.category_index = self.config.get("category_index")
-        self.scaler_save_path = self.config.get("scaler_save_path")
-        self.reshape = self.config.get("reshape")
         
         # Initialize data loader
         self.ltd = LoadTrainingData()
@@ -802,9 +794,13 @@ class CleanRawData:
         """
         # Separate describe/plot phase from cleaning/aligning
         if any([describe_features, describe_targets, plot_features]):
+            source = 'source_query'
             for key in data_keys:
                 print(f"Beginning descriptive functions for {key}...")
-                chunk_keys = self.ltd.chunk_keys(key)  # Determine chunk splits
+                chunk_keys = self.ltd.chunk_keys(
+                    mode='config', 
+                    source=source, 
+                    key=key)  # Determine chunk splits
     
                 for idx, chunk_key in enumerate(chunk_keys):
                     print(f"Processing chunk {chunk_key[0][0]} - {chunk_key[1][0]}...")
@@ -815,18 +811,20 @@ class CleanRawData:
                         if not (plot_features and plot_mode == 'rate' and not any(
                                 [describe_features, describe_targets])):
                             col_list = self._collect_cols(key)
-                            if describe_targets:
-                                continue
-                            else:
+                            if not describe_targets:
                                 bin_edges = self._initialize_bins_from_sql(col_list, key)
                     
-                    data = self.ltd.load_chunk(key, chunk_key)
+                    data = self.ltd.load_chunk(
+                        mode='config',
+                        source=source,
+                        key=key, 
+                        chunk_key=chunk_key)
+                    
                     if not (plot_features and plot_mode == 'rate' and not any(
                             [describe_features, describe_targets])):
                         data = self._remove_primary_key(data)
                         data = self._convert_to_numeric(data)
                         progress_log = self._get_progress_log(key)
-                    
                     # Perform operations on the current chunk
                     if describe_features:
                         self._describe_features(
@@ -842,7 +840,7 @@ class CleanRawData:
                             self._plot_features(key, chunk_key, data, progress_log, 
                                                 bin_edges, col_list, finish, 
                                                 describe_features)
-        
+                    
     def _import_function(self, module_path, function_name):
         """
         Dynamically import a module specified in `self.module_path` and 
@@ -890,18 +888,26 @@ class CleanRawData:
                 the keys in a list to only process select tables/data.
         """
         def clean_steps(data_keys):
-            bad_keys_list = []
             for key in data_keys:
                 print(f"Processing clean functions for: {key}")
                 # Determine chunk splits
-                chunk_keys = self.ltd.chunk_keys(key)  
+                bad_keys_list = []
+                source = 'clean_functions'
+                chunk_keys = self.ltd.chunk_keys(
+                    mode='config',
+                    source=source, 
+                    key=key)  
                 # Import the filter function
                 module_path = self.env_loader.get(self.clean_functions[key][0])
                 function_name = self.clean_functions[key][2]
                 filter_function = self._import_function(module_path, function_name)
                 for idx, chunk_key in enumerate(chunk_keys):
                     print(f"Processing chunk {chunk_key[0][0]} - {chunk_key[1][0]}...")
-                    data = self.ltd.load_chunk(key, chunk_key)
+                    data = self.ltd.load_chunk(
+                        mode='config',
+                        source=source, 
+                        key=key, 
+                        chunk_key=chunk_key)
                     data = self._convert_to_numeric(data)
                     bad_keys = filter_function(data)
                     bad_keys_list.extend(bad_keys)
@@ -913,10 +919,162 @@ class CleanRawData:
             
         clean_steps(data_keys)
         
+    def _create_bad_key_set(self, bad_keys_path):
+        """
+        Loop through all bad_keys.txt files in the given directory, extract bad keys, 
+        and store them in a set.
+    
+        Args:
+            bad_keys_path (str): Path to the directory containing bad_keys.txt files.
+    
+        Returns:
+            set: A set of tuples containing bad primary keys (pair, date).
+        """
+        full_set = set()
+    
+        # Iterate through all text files in the directory
+        for file in os.listdir(bad_keys_path):
+            if file.endswith("_bad_keys.txt"):  # Ensure only relevant files are processed
+                full_path = os.path.join(bad_keys_path, file)
+                
+                # Read and extract keys
+                with open(full_path, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:  # Skip empty lines
+                            try:
+                                # Parse the line as a tuple
+                                pair, date = eval(line)  # Convert string tuple to actual tuple
+                                full_set.add((pair, date))  # Add to the set
+                            except Exception as e:
+                                print(f"Error parsing line in {file}: {line} | {e}")
+    
+        return full_set
+    
+    def _remove_bad_keys(self, data, bad_key_set):
+        """
+        Filter out data with matching primary keys and return the cleaned 
+        data.
+        """
+        # Ensure the required primary key columns exist in the DataFrame
+        primary_keys = self.primary_key
+        for key in primary_keys:
+            if key not in data.columns:
+                raise KeyError(f"Primary key '{key}' not found in data columns: {data.columns}")
+    
+        # Filter out rows that have a primary key match in bad_key_set
+        mask = data.apply(lambda row: (row["pair"], row["date"]) not in bad_key_set, axis=1)
+        cleaned_data = data[mask].reset_index(drop=True)
+        
+        return cleaned_data
+    
+    def _save_clean_data(self, clean_data, db_path, table):
+        """
+        Save the cleaned data to the clean database and its corresponding table.
+    
+        - If `reset_db` is True, it **deletes the old clean database** before inserting new data.
+        - Uses `if_exists="replace"` for first write and `if_exists="append"` for additional tables.
+        
+        Args:
+            clean_data (pd.DataFrame): The cleaned DataFrame to be saved.
+            db_path (str): Path to the clean database.
+            table (str): Name of the table in which data should be stored.
+            reset_db (bool): If True, removes the old clean database before writing fresh data.
+        """
+        if clean_data.empty:
+            print(f"No clean data to save for table: {table}")
+            return
+    
+        # Ensure the database filename includes "_clean"
+        db_dir, db_filename = os.path.split(db_path)
+        if "_clean" not in db_filename:
+            db_filename = db_filename.replace(".db", "_clean.db")
+            db_path = os.path.join(db_dir, db_filename)
+    
+        # Save to SQLite, replacing old table data if necessary
+        with sqlite3.connect(db_path) as conn:
+            clean_data.to_sql(table, conn, if_exists="append", index=False)
+    
+        print(f"Clean data saved successfully to {table} in {db_path}")
+        
+    def _clean_and_save(self, feature_path, target_path, bad_key_set):
+        """
+        Load data from raw or clean database, remove data with bad keys, and
+        save the clean data to the clean database.
+        """
+        def clean_and_save_process(db_paths, bad_key_set):
+            for db_path in db_paths:
+                
+                # Ensure the database filename includes "_clean"
+                db_dir, db_filename = os.path.split(db_path)
+                if "_clean" not in db_filename:
+                    db_filename = db_filename.replace(".db", "_clean.db")
+                    delete_path = os.path.join(db_dir, db_filename)
+                
+                # Reset the clean database only once before first insert
+                if os.path.exists(delete_path):
+                    os.remove(delete_path)
+                    print(f"Deleted old clean database: {delete_path}")
+                
+                conn = sqlite3.connect(db_path)
+                try:
+                    with sqlite3.connect(db_path) as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                        tables = [row[0] for row in cursor.fetchall()] 
+                    
+                    for table in tables:
+                        query = f"""
+                        SELECT * FROM {table}
+                        WHERE pair = 'AUDUSD'
+                        """
+                        chunk_keys = self.ltd.chunk_keys(
+                            mode='manual',
+                            db_path=db_path,
+                            query=query
+                            )
+                        for idx, chunk_key in enumerate(chunk_keys):
+                            print(f"Processing chunk {chunk_key[0][0]} - {chunk_key[1][0]}...")
+                            data = self.ltd.load_chunk(
+                                mode='manual',
+                                db_path=db_path,
+                                query=query,
+                                chunk_key=chunk_key
+                                )
+                            clean_data = self._remove_bad_keys(data, bad_key_set)
+                            self._save_clean_data(clean_data, db_path, table)
+                finally:
+                    conn.close()
+                    
+        # Check if feature and target paths are the same
+        if feature_path == target_path:
+            db_paths = [feature_path]
+        else:
+            db_paths = [feature_path, target_path]
+            
+        clean_and_save_process(db_paths, bad_key_set)
+        
     @public_method
     def align(self):
         """
-        Loop through the iteration's database tables, observations based on the
-        stored bad primary key file, and save or update the clean data tables.
+        Loop through the iteration's database tables, remove observations based 
+        on the stored bad primary key file, and save or update the clean data 
+        tables.
         """        
+        # Get paths for clean and raw databases
+        clean_feature_path = self.env_loader.get("CLEAN_FEATURE_DATABASE")
+        clean_target_path = self.env_loader.get("CLEAN_TARGET_DATABASE")
+        raw_feature_path = self.env_loader.get("FEATURE_DATABASE")
+        raw_target_path = self.env_loader.get("TARGET_DATABASE")
+    
+        # Use clean database if it exists, otherwise fall back to raw database
+        feature_path = clean_feature_path if os.path.isfile(clean_feature_path) else raw_feature_path
+        target_path = clean_target_path if os.path.isfile(clean_target_path) else raw_target_path
+        
+        # Create a set of all bad primary keys
+        bad_key_set = self._create_bad_key_set(self.bad_keys_path)
+        
+        # Loop through the raw or clean database tables, remove bad keys,
+        # and save or overwrite clean database
+        self._clean_and_save(feature_path, target_path, bad_key_set)
         

@@ -2,9 +2,10 @@
 
 
 import sqlite3
-import pandas as pd
 import math
 import re
+
+import pandas as pd
 
 from utils import EnvLoader, public_method
 
@@ -62,22 +63,36 @@ class LoadTrainingData:
             column_count = len(cursor.description)  # Number of columns
         return column_count
 
-    def chunk_keys(self, key):
+    @public_method
+    def chunk_keys(self, mode, source=None, key=None, db_path=None, query=None):
         """
-        Calculate primary key ranges for chunks based on the dataset size
+        Calculate primary key ranges for chunks based on dataset size
         and the maximum allowable chunk size. Supports composite primary keys.
     
         Args:
-            key (str): Key from the source_query config.
+            mode (str): "config" to use source/key from config, "manual" to provide db_path and query.
+            source (str, optional): Config key to retrieve data from (used in "config" mode).
+            key (str, optional): Key from the source_query config (used in "config" mode).
+            db_path (str, optional): Database path (used in "manual" mode).
+            query (str, optional): SQL query to fetch data (used in "manual" mode).
     
         Returns:
             list of tuple: List of ((start_date, start_pair), (end_date, end_pair)) tuples for chunking.
         """
-        if key not in self.source_query:
-            raise ValueError(f"Key '{key}' not found in source_query configuration.")
-        
-        db_ref, query = self.source_query[key]
-        db_path = self.env_loader.get(db_ref)  # Retrieve the database path from EnvLoader
+        if mode == "config":
+            if not source or not key:
+                raise ValueError("When using 'config' mode, 'source' and 'key' must be provided.")
+            source = self.config.get(source)
+            if key not in source:
+                raise ValueError(f"Key '{key}' not found in configuration.")
+            db_ref = source[key][0]
+            query = source[key][1]
+            db_path = self.env_loader.get(db_ref)
+        elif mode == "manual":
+            if not db_path or not query:
+                raise ValueError("When using 'manual' mode, 'db_path' and 'query' must be provided.")
+        else:
+            raise ValueError("Invalid mode. Choose either 'config' or 'manual'.")
         
         # Get row and column counts
         row_count = self._get_row_count(db_path, query)
@@ -118,26 +133,42 @@ class LoadTrainingData:
     
         return chunk_keys
 
-    def load_chunk(self, key, chunk_key): 
+    @public_method
+    def load_chunk(self, mode, source=None, key=None, db_path=None, query=None, chunk_key=None): 
         """
         Load a chunk of data based on the key and chunk key.
     
         Args:
-            key (str): Key from the source_query config.
+            mode (str): "config" to use source/key from config, "manual" to provide db_path and query.
+            source (str, optional): Config key to retrieve data from (used in "config" mode).
+            key (str, optional): Key from the source_query config (used in "config" mode).
+            db_path (str, optional): Database path (used in "manual" mode).
+            query (str, optional): SQL query to fetch data (used in "manual" mode).
             chunk_key (tuple): Tuple of (start_date, end_date) for chunk boundaries.
     
         Returns:
             pandas.DataFrame: DataFrame containing the data for the chunk.
         """
-        if key not in self.source_query:
-            raise ValueError(f"Key '{key}' not found in source_query configuration.")
-        
-        # Extract database and query information
-        db_ref, base_query = self.source_query[key]
-        db_path = self.env_loader.get(db_ref)  # Retrieve the database path from EnvLoader
+        if mode == "config":
+            if not source or not key:
+                raise ValueError("When using 'config' mode, 'source' and 'key' must be provided.")
+            source = self.config.get(source)
+            if key not in source:
+                raise ValueError(f"Key '{key}' not found in configuration.")
+            db_ref = source[key][0]
+            query = source[key][1]
+            db_path = self.env_loader.get(db_ref)
+        elif mode == "manual":
+            if not db_path or not query:
+                raise ValueError("When using 'manual' mode, 'db_path' and 'query' must be provided.")
+        else:
+            raise ValueError("Invalid mode. Choose either 'config' or 'manual'.")
+    
+        if not chunk_key:
+            raise ValueError("chunk_key must be provided to specify the date range.")
     
         # Strip and clean query
-        base_query = base_query.strip().rstrip(";")
+        base_query = query.strip().rstrip(";")
     
         # Ensure correct query formatting
         query_upper = base_query.upper()
@@ -165,131 +196,12 @@ class LoadTrainingData:
     
         # Reconstruct final query
         final_query = f"{modified_query} {order_part}"
-    
+        
         # Extract start_date and end_date as strings
         start_date = str(chunk_key[0][0])
         end_date = str(chunk_key[1][0])
     
         with sqlite3.connect(db_path) as conn:
             data = pd.read_sql_query(final_query, conn, params=(start_date, end_date))
-    
         return data
-    
-    ### OLD #########
-    @public_method
-    def load_mode(self, db_path, query):
-        """
-        Check the shape of the data to load and determine if chunking is necessary.
-
-        Args:
-            db_path (str): Path to the SQLite database.
-            query (str): SQL query.
-
-        Returns:
-            str: "chunk" if chunked loading is necessary, otherwise "full".
-        """
-        # Get the number of rows and columns
-        row_count = self._get_row_count(db_path, query)
-        column_count = self._get_column_count(db_path, query)
-
-        # Estimate memory usage in GB (assuming 4 bytes per value)
-        estimated_memory_gb = (row_count * column_count * 8) / (1024**3)
-
-        print(f"Estimated DataFrame size: {row_count} rows x {column_count} columns")
-        print(f"Estimated memory usage: {estimated_memory_gb:.2f} GB")
-
-        # Determine the load mode
-        if row_count > self.chunk_size_threshold or estimated_memory_gb > self.memory_threshold_gb:
-            print("Switching to chunked loading mode.")
-            return "chunk"
-        else:
-            print("Full loading mode is sufficient.")
-            return "full"
-        
-    def _load_from_database(self, db_path, query):
-        """
-        Internal helper function to load data from a database.
-        """
-        if not query:
-            raise ValueError("Query is empty or not provided.")
-        
-        try:
-            with sqlite3.connect(db_path) as conn:
-                df = pd.read_sql(query, conn)
-                print("Data loaded successfully...", df.head())
-                return df
-        except Exception as e:
-            raise RuntimeError(f"Error loading data from the database: {e}")
-            
-    def _align(self, df_dict):
-        """
-        Ensure all DataFrames are aligned on the primary key and have the same length.
-    
-        Args:
-            df_dict (dict): A dictionary where keys are descriptive names and values are DataFrames.
-    
-        Returns:
-            dict: A dictionary of aligned DataFrames with identical indices based on the primary key.
-        """
-        if not self.primary_key:
-            raise ValueError("Primary key is not defined in the configuration.")
-    
-        # Check for missing primary key columns in each DataFrame
-        for key, df in df_dict.items():
-            missing_keys = [col for col in self.primary_key if col not in df.columns]
-            if missing_keys:
-                raise ValueError(f"DataFrame '{key}' is missing primary key columns: {missing_keys}")
-    
-        # Determine the union of all primary keys across DataFrames
-        all_keys = pd.concat([df[self.primary_key] for df in df_dict.values()]).drop_duplicates()
-        all_keys.set_index(self.primary_key, inplace=True)
-    
-        # Reindex each DataFrame to align with the union of primary keys
-        aligned_dict = {}
-        for key, df in df_dict.items():
-            df.set_index(self.primary_key, inplace=True, drop=False)
-            aligned_df = all_keys.join(df, how="left").reset_index(drop=True)
-            aligned_dict[key] = aligned_df
-    
-            # Ensure the lengths match
-            if len(aligned_df) != len(all_keys):
-                raise ValueError(f"DataFrame '{key}' could not be fully aligned with the primary key index.")
-    
-        print("All DataFrames are aligned on the primary key and have the same length.")
-        return aligned_dict
-    
-    @public_method
-    def load_data(self):
-        """
-        Load each dataframe based on the config's source_query sets.
-    
-        Returns:
-            dict: A dictionary where keys are descriptive names for the DataFrames
-                  and values are the loaded DataFrames.
-        """
-        print("Beginning to load data...")
-    
-        df_dict = {}
-    
-        # Iterate through the source_query list from config
-        for i, (source_type, query, meta) in enumerate(self.source_query):
-            # Retrieve database path from environment variables or config
-            db_path = self.env_loader.get(source_type)
-    
-            # Load data from the database
-            try:
-                df = self._load_from_database(db_path, query)
-            except Exception as e:
-                raise RuntimeError(f"Failed to load data for source {source_type}: {e}")
-    
-            # Use descriptive keys for the dictionary
-            df_key = f"df{i}" if not meta else f"{meta}"
-            df_dict[df_key] = df
-        
-        # Ensure each dataframe is aligned
-        if len(df_dict) > 1:
-            df_dict = self._align(df_dict)
-            
-        print(f"Successfully loaded {len(df_dict)} dataframes.")
-        return df_dict
-            
+               

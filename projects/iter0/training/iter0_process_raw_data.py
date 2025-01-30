@@ -19,6 +19,22 @@ def filter_hourly(df):
     filtered_rows = df[(df['close_standard_1'] > 1.01) | (df['close_standard_1'] < 0.99)]
     # Return as a list of tuples (pair, date)
     return list(zip(filtered_rows['pair'], filtered_rows['date']))
+
+
+def filter_targets(df):
+    """
+    Find rows in df['hours_passed'] with values >= 126.
+    
+    Returns:
+        List of tuples containing ('pair', 'date') for matching rows.
+    """
+    if 'pair' not in df.columns or 'date' not in df.columns or 'hours_passed' not in df.columns:
+        raise ValueError("DataFrame must contain 'pair', 'date', and 'hours_passed' columns.")
+
+    # Apply filtering condition
+    filtered_rows = df[df['hours_passed'] >= 126]
+    # Return as a list of tuples (pair, date)
+    return list(zip(filtered_rows['pair'], filtered_rows['date']))
     
 
 def filter_indices(df):

@@ -36,17 +36,38 @@ config = {
     # database, a query for specifying the table and data to filter, and 
     # the name of the filter function
     "clean_functions": {
-        "iter0_hourly_features" : ("FEATURE_DATABASE", 
+        "iter0_hourly_features": ("FEATURE_DATABASE", 
          """
          SELECT * FROM hourly_features
          WHERE pair IN ('AUDUSD', 'EURUSD')
-         AND date > '2023-10-01'
+         AND date > '2022-10-01'
          ORDER BY pair, date
          """,
-         'filter_hourly')
+         'filter_hourly'),
+        "iter0_targets": ("TARGET_DATABASE",
+        """
+        SELECT * FROM targets
+        WHERE pair = 'AUDUSD'
+        """,
+        'filter_targets')
         },
     "bad_keys_path": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning'
                       r'\projects\iter0\training\clean_data'),
+    
+    # Dictionary for cleaning and saving
+    "align": {
+        "iter0_hourly_features": ("FEATURE_DATABASE",
+            """
+            SELECT * FROM hourly_features
+            """
+            ),
+        "iter0_targets": ("TARGET_DATABASE",
+        """
+        SELECT * FROM targets
+        """)
+        },
+    
+    
     # (name of function, dataframe to apply to (key of df_dict))
     "feature_engineering": [('feature_engineering', 'model1')],
     "target_engineering": [('target_engineering', 'model1')],
