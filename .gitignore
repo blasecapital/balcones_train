@@ -4,3 +4,4 @@ __pycache__/
 
 # Ignore data directories
 projects/data/*.db
+projects/**/training/clean_data/*.txt
