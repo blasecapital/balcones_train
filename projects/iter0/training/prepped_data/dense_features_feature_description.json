@@ -1,0 +1,5 @@
+{
+    "day_sin": "float32",
+    "day_cos": "float32",
+    "pair_AUDUSD": "int64"
+}

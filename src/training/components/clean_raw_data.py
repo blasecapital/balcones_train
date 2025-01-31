@@ -841,7 +841,7 @@ class CleanRawData:
                                                 bin_edges, col_list, finish, 
                                                 describe_features)
                     
-    def _import_function(self, module_path, function_name):
+    def _import_function(self, function_name):
         """
         Dynamically import a module specified in `self.module_path` and 
         return the function from the arg.
@@ -898,9 +898,8 @@ class CleanRawData:
                     source=source, 
                     key=key)  
                 # Import the filter function
-                module_path = self.env_loader.get(self.clean_functions[key][0])
                 function_name = self.clean_functions[key][2]
-                filter_function = self._import_function(module_path, function_name)
+                filter_function = self._import_function(function_name)
                 for idx, chunk_key in enumerate(chunk_keys):
                     print(f"Processing chunk {chunk_key[0][0]} - {chunk_key[1][0]}...")
                     data = self.ltd.load_chunk(
@@ -991,11 +990,39 @@ class CleanRawData:
             db_filename = db_filename.replace(".db", "_clean.db")
             db_path = os.path.join(db_dir, db_filename)
     
-        # Save to SQLite, replacing old table data if necessary
-        with sqlite3.connect(db_path) as conn:
-            clean_data.to_sql(table, conn, if_exists="append", index=False)
+        # Convert all columns to string format for storage
+        clean_data = clean_data.astype(str)
     
-        print(f"Clean data saved successfully to {table} in {db_path}")
+        # Define columns and enforce primary key
+        column_definitions = ", ".join(f"{col} TEXT" for col in clean_data.columns)
+        primary_key_str = ", ".join(self.primary_key)
+    
+        create_table_query = f"""
+            CREATE TABLE IF NOT EXISTS {table} (
+                {column_definitions},
+                PRIMARY KEY ({primary_key_str})
+            )
+        """
+        columns = ", ".join(clean_data.columns)
+        placeholders = ", ".join(["?"] * len(clean_data.columns))
+    
+        insert_query = f"""
+            INSERT OR REPLACE INTO {table} ({columns})
+            VALUES ({placeholders})
+        """
+    
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+    
+            # Create the table if it does not exist
+            cursor.execute(create_table_query)
+    
+            # Execute batch insert
+            cursor.executemany(insert_query, clean_data.to_records(index=False))
+    
+            conn.commit()
+    
+        print(f"Data successfully saved to {table} in {db_path}")
         
     def _clean_and_save(self, feature_path, target_path, bad_key_set):
         """
@@ -1009,7 +1036,8 @@ class CleanRawData:
                 db_dir, db_filename = os.path.split(db_path)
                 if "_clean" not in db_filename:
                     db_filename = db_filename.replace(".db", "_clean.db")
-                    delete_path = os.path.join(db_dir, db_filename)
+                
+                delete_path = os.path.join(db_dir, db_filename)
                 
                 # Reset the clean database only once before first insert
                 if os.path.exists(delete_path):
@@ -1062,19 +1090,13 @@ class CleanRawData:
         tables.
         """        
         # Get paths for clean and raw databases
-        clean_feature_path = self.env_loader.get("CLEAN_FEATURE_DATABASE")
-        clean_target_path = self.env_loader.get("CLEAN_TARGET_DATABASE")
         raw_feature_path = self.env_loader.get("FEATURE_DATABASE")
         raw_target_path = self.env_loader.get("TARGET_DATABASE")
-    
-        # Use clean database if it exists, otherwise fall back to raw database
-        feature_path = clean_feature_path if os.path.isfile(clean_feature_path) else raw_feature_path
-        target_path = clean_target_path if os.path.isfile(clean_target_path) else raw_target_path
         
         # Create a set of all bad primary keys
         bad_key_set = self._create_bad_key_set(self.bad_keys_path)
         
         # Loop through the raw or clean database tables, remove bad keys,
         # and save or overwrite clean database
-        self._clean_and_save(feature_path, target_path, bad_key_set)
+        self._clean_and_save(raw_feature_path, raw_target_path, bad_key_set)
         

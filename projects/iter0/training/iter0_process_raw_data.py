@@ -7,18 +7,27 @@ import pandas as pd
 
 def filter_hourly(df):
     """
-    Find rows in df['close_standard_1'] with values above 1.01 or below 0.99.
-    
+    Find rows in df['close_standard_1'] with values above 1.01, below 0.99, 
+    or containing NaN values.
+
     Returns:
         List of tuples containing ('pair', 'date') for matching rows.
     """
     if 'pair' not in df.columns or 'date' not in df.columns or 'close_standard_1' not in df.columns:
         raise ValueError("DataFrame must contain 'pair', 'date', and 'close_standard_1' columns.")
 
-    # Apply filtering condition
+    # Apply filtering condition (values above 1.01 or below 0.99)
     filtered_rows = df[(df['close_standard_1'] > 1.01) | (df['close_standard_1'] < 0.99)]
-    # Return as a list of tuples (pair, date)
-    return list(zip(filtered_rows['pair'], filtered_rows['date']))
+    
+    # Find rows with NaN values in any column
+    nan_rows = df[df.isna().any(axis=1)]  # Any column containing NaN
+
+    # Extract (pair, date) tuples
+    filtered_list = list(zip(filtered_rows['pair'], filtered_rows['date']))
+    nan_list = list(zip(nan_rows['pair'], nan_rows['date']))
+
+    # Combine both lists
+    return filtered_list + nan_list
 
 
 def filter_targets(df):
@@ -63,28 +72,35 @@ def filter_indices(df):
 
 def feature_engineering(df):
     """
-    Example function that performs feature engineering by adding sine and 
-    cosine transformations for the day of the month.
+    Perform feature engineering by:
+        - Adding sine and cosine transformations for the day of the month.
+        - One-hot encoding the 'pair' column while retaining it.
 
     Args:
-        df (pd.DataFrame): DataFrame with a 'date' column.
+        df (pd.DataFrame): DataFrame with 'date' and 'pair' columns.
 
     Returns:
-        pd.DataFrame: DataFrame with new features added.
+        pd.DataFrame: DataFrame with new engineered features.
     """
-    # Ensure 'date' column is in datetime format
+    
+    # Ensure 'date' is in datetime format
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
 
-    # Handle rows where 'date' conversion failed (optional)
+    # Handle invalid date conversions
     if df['date'].isna().any():
-        raise ValueError(r"Some dates could not be converted to datetime."
-                         " Check the 'date' column for invalid values.")
+        raise ValueError("Some dates could not be converted to datetime. Check 'date' column.")
 
-    # Add sine and cosine transformations for the day of the month
+    # Day-of-month cyclic encoding
     df['day_sin'] = np.sin(2 * np.pi * (df['date'].dt.day / 30))
     df['day_cos'] = np.cos(2 * np.pi * (df['date'].dt.day / 30))
 
-    return df
+    # One-hot encode 'pair' column while keeping the original
+    df_encoded = pd.get_dummies(df, columns=['pair'], prefix='pair', dtype=int)
+    
+    # Re-insert the original 'pair' column at its original position
+    df_encoded.insert(df.columns.get_loc('pair'), 'pair', df['pair'])
+
+    return df_encoded
 
 
 def target_engineering(df):

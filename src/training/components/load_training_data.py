@@ -127,9 +127,8 @@ class LoadTrainingData:
         # Split the primary key values into chunks
         chunk_keys = []
         for i in range(0, len(primary_key_values), rows_per_chunk):
-            chunk_keys.append(
-                (primary_key_values[i], 
-                 primary_key_values[min(i + rows_per_chunk - 1, len(primary_key_values) - 1)]))
+            end_index = min(i + rows_per_chunk, len(primary_key_values))
+            chunk_keys.append((primary_key_values[i], primary_key_values[end_index - 1]))
     
         return chunk_keys
 
@@ -188,7 +187,7 @@ class LoadTrainingData:
         base_query = re.sub(r"AND\s+date\s*[<>]=?\s*'\d{4}-\d{2}-\d{2}'", "", base_query, flags=re.IGNORECASE)
     
         # Construct new WHERE condition correctly
-        new_where_condition = "date > ? AND date <= ?"
+        new_where_condition = "date >= ? AND date <= ?"
         if where_exists:
             modified_query = f"{base_query} AND {new_where_condition}"
         else:
