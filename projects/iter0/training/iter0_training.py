@@ -2,17 +2,12 @@
 
 
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, LSTM, Dropout, Dense, SpatialDropout1D
+from tensorflow.keras.layers import Input, LSTM, Dropout, Dense, Concatenate
+from tensorflow.keras.regularizers import l2
 
 
-def create_model(
-        timesteps=None,
-        features=None,
-        output_dim=1,
-        lstm_layers=[32, 16],
-        output_activation="softmax",
-        dropout_rate=0.5,
-        batch_size=None):
+def create_model(n_hours_back_hourly, n_ohlc_features, l2_strength, dropout_rate,
+                 n_dense_features, activation, n_targets, output_activation):
     """
     Create a TensorFlow model with multiple stacked LSTM layers optimized for GPU (cuDNN) support.
 
@@ -31,24 +26,24 @@ def create_model(
     Returns:
         tf.keras.Model: The compiled TensorFlow model.
     """
-    # Input layer
-    inputs = Input(shape=(timesteps, features), batch_size=batch_size, name="input_layer")
+    # Hourly LSTM Layers
+    hourly_input = Input(shape=(n_hours_back_hourly, n_ohlc_features))
+    x_hourly = LSTM(256, return_sequences=True, kernel_regularizer=l2(l2_strength))(hourly_input)
+    x_hourly = Dropout(dropout_rate)(x_hourly)
+    x_hourly = LSTM(128, kernel_regularizer=l2(l2_strength))(x_hourly)
     
-    # Add LSTM layers
-    x = inputs
-    for i, units in enumerate(lstm_layers):
-        return_sequences = (i < len(lstm_layers) - 1)  # Return sequences for all but the last LSTM
-        x = LSTM(
-            units,
-            return_sequences=return_sequences,
-            name=f"lstm_layer_{i+1}",
-            dropout=dropout_rate
-        )(x)
+    # Engineered Layers
+    eng_input = Input(shape=(n_dense_features,))
+    x_eng = Dense(64, activation=activation, kernel_regularizer=l2(l2_strength))(eng_input)
+    
+    # Concatenate Layers
+    concatenated = Concatenate()([x_hourly, x_eng])
+    x = Dense(256, activation=activation)(concatenated)
     
     # Output layer
-    outputs = Dense(output_dim, activation=output_activation, name="output_layer")(x)
+    output = Dense(n_targets, activation=output_activation, name="output_layer")(x)
 
     # Define the model
-    model = Model(inputs=inputs, outputs=outputs, name="stacked_lstm_model")
+    model = Model(inputs=[hourly_input, eng_input], outputs=output)
     model.summary()
     return model

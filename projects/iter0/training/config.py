@@ -141,47 +141,71 @@ config = {
             {
                 'targets': {
                     'scaler': False,
-                    'reshape': False
+                    'reshape': False,
+                    'weights_dict': 'target'
                     }
                 }
             )
         },
+    "weight_dict_save_path": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
+                              r"\deep_learning\projects\iter0\training"
+                              r"\wightes_dict\target_weights_dict.json"), 
     
-    "define_features": [('df_features', 'model1')],
     # (target column name, associated dataframe)
     "define_targets": [('target', 'model1')],
     # (dict mapping categories to their codes, associated dataframe)
     "category_index": [({'loss': 0, 'buy': 1, 'sell': 2, 'wait': 0}, 'model1')],
+    
     # (samples, timesteps, features, dataframe to apply to (df_key))
     # Example (-1, 48, 4, 'model1')
     "reshape": [(-1, 48, 4, 'model1')],
     
     # Args for training
-    "model_specs": {
-        "model1": {
-            "model_modules_path": (r'C:\Users\brand\OneDrive'
-                                   r'\Blase Capital Mgmt\deep_learning'
-                                   r'\projects\iter0\training'
-                                   r'\iter0_training.py'),
-            "initial_bias_path": (),
-            "model_save_path": (r'C:\Users\brand\OneDrive'
-                                r'\Blase Capital Mgmt\deep_learning'
-                                r'\projects\iter0\training'),
-            "save_requirements_path": (r'C:\Users\brand\OneDrive'
-                                       r'\Blase Capital Mgmt\deep_learning'
-                                       r'\projects\iter0\training'),
-            "model_function": 'create_model',
-            "custom_loss": {},
-            "loss": {"output_layer": "categorical_crossentropy"},
-            "metrics": ["accuracy"],
-            "learning_rate_schedule": [],
-            "optimizer": {"type": "adam", "learning_rate": 0.001},
-            "epochs": 10,
-            "batch_size": 32,
-            "early_stopping": '',
-            "checkpoint": ''
-            }
-        }
-    ,
-    
+    "feature_categories": 
+        {
+            'hourly': {
+                'reshape': True,
+                'shape': (48, 4)
+                },
+            'dense': {
+                'reshape': False,
+                'shape': None
+                }
+            },
+    "model_modules_path": (r'C:\Users\brand\OneDrive'
+                           r'\Blase Capital Mgmt\deep_learning'
+                           r'\projects\iter0\training'
+                           r'\iter0_training.py'),
+    "model_function": 'create_model',
+    "model_args": {
+        'n_hours_back_hourly': 192 // 4, # len(features) // len(window)
+        'n_ohlc_features': 4, # window
+        'l2_strength': 0.00, 
+        'dropout_rate': 0.0,
+        'n_dense_features': 3, 
+        'activation': 'relu', 
+        'n_targets': 3, 
+        'output_activation': 'softmax'
+        },
+    "initial_bias_path": (),
+    "weight_dict_path": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
+                         r"\deep_learning\projects\iter0\training"
+                         r"\wightes_dict\target_weights_dict.json"), 
+    "data_dir": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt'
+                 r'\deep_learning\projects\iter0\training\prepped_data'),
+    "model_save_path": (r'C:\Users\brand\OneDrive'
+                        r'\Blase Capital Mgmt\deep_learning'
+                        r'\projects\iter0\training'),
+    "save_requirements_path": (r'C:\Users\brand\OneDrive'
+                               r'\Blase Capital Mgmt\deep_learning'
+                               r'\projects\iter0\training'),
+    "custom_loss": {},
+    "loss": {"output_layer": "sparse_categorical_crossentropy"},
+    "metrics": ["accuracy"],
+    "learning_rate_schedule": [],
+    "optimizer": {"type": "adam", "learning_rate": 0.0001},
+    "epochs": 50,
+    "batch_size": 32,
+    "early_stopping": '',
+    "checkpoint": ''
     }

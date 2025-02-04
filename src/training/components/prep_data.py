@@ -6,7 +6,6 @@ import sqlite3
 import warnings
 import importlib.util
 import re
-from collections import Counter
 import json
 
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
@@ -41,7 +40,10 @@ class PrepData:
         self.scaler_save_dir = self.config.get("scaler_save_dir")
         self.prep_and_save_dict = self.config.get("prep_and_save")
         self.prepped_data_dir = self.config.get("prepped_data_dir")
-        self.reshape = self.config.get("reshape")
+        self.weight_dict_save_path = self.config.get("weight_dict_save_path")
+        
+        # Initialize weights_dict
+        self.weights_dict = {}
         
         # Initialize data loader
         self.ltd = LoadTrainingData()
@@ -226,38 +228,6 @@ class PrepData:
         """
         Keep track of primary-key based splits, completed processes, etc.
         """
-        
-    def _reshape(self, feature_arr, reshape_config, table):
-        """
-        Reshape a feature array based on configuration.
-    
-        Args:
-            feature_arr (np.ndarray): Feature array to reshape.
-            reshape_config (tuple): Reshape configuration (samples, timesteps, features, df_key).
-    
-        Returns:
-            np.ndarray: Reshaped feature array.
-        """
-        samples, timesteps, features = reshape_config
-    
-        # Automatic calculation for `samples` if set to -1
-        if samples == -1:
-            samples = feature_arr.size // (timesteps * features)
-    
-        # Validate the reshape dimensions
-        expected_size = samples * timesteps * features
-        if feature_arr.size != expected_size:
-            raise ValueError(
-                f"Feature array for '{table}' cannot be reshaped into "
-                f"(samples={samples}, timesteps={timesteps}, features={features}). "
-                f"Expected size: {expected_size}, got: {feature_arr.size}."
-            )
-    
-        # Perform reshaping
-        reshaped = feature_arr.reshape(samples, timesteps, features)
-        print(f"Reshaped data for '{table}' to shape {reshaped.shape}.")
-    
-        return reshaped
     
     def _convert_sqlite_text_to_types(self, df):
         """
@@ -399,7 +369,44 @@ class PrepData:
                 writer.write(example)
                 
         print(f"Saved TFRecord: {filename}")
-       
+        
+    def _create_and_save_weights_dict(self, data, target_col, fin):
+        """
+        Update and optionally finalize the weights dictionary with counts from the provided data.
+        
+        Args:
+            data (pd.DataFrame): DataFrame containing the target column.
+            target_col (str): Name of the column to use for computing class weights.
+            fin (bool): True if this is the final training chunk, triggering calculation of final weights and saving them.
+            
+        The function updates self.weights_dict with the count of each class from the current chunk.
+        If fin is True, it computes the final class weights using an inverse frequency method, 
+        then saves the resulting dictionary to self.weight_dict_save_path.
+        """
+        # Ensure weights_dict is initialized (should already be set in __init__)
+        if not hasattr(self, 'weights_dict'):
+            self.weights_dict = {}
+        
+        # Get a dictionary of counts for each unique value in the target column
+        chunk_counts = data[target_col].value_counts().to_dict()
+        
+        # Update the weights_dict with these counts
+        for cls, count in chunk_counts.items():
+            self.weights_dict[cls] = self.weights_dict.get(cls, 0) + count
+    
+        # If this is the final chunk, compute the final class weights and save the dictionary.
+        if fin:
+            total_samples = sum(self.weights_dict.values())
+            num_classes = len(self.weights_dict)
+            # Compute weights: weight for class i = total_samples / (num_classes * count_i)
+            final_weights = {cls: total_samples / (num_classes * count) for cls, count in self.weights_dict.items()}
+            
+            # Save the final weights to the specified JSON file.
+            with open(self.weight_dict_save_path, 'w') as f:
+                json.dump(final_weights, f)
+            
+            print("Final class weights saved to {}: {}".format(self.weight_dict_save_path, final_weights))
+        
     @public_method
     def save_batches(self):
         """
@@ -457,8 +464,13 @@ class PrepData:
                         data = pd.DataFrame(data, columns=data_columns)
                         
                     # Determine dataset split: 60% train, 20% val, 20% test
-                    if idx < int(len(chunk_keys) * 0.6):
+                    n_train = int(len(chunk_keys) * 0.6) 
+                    if idx < n_train:
                         split_type = "train"
+                        if self.prep_and_save_dict[key][1][table].get('weights_dict'):
+                            target_col = self.prep_and_save_dict[key][1][table]['weights_dict']
+                            fin = idx == n_train - 1
+                            self._create_and_save_weights_dict(data, target_col, fin)
                     elif idx < int(len(chunk_keys) * 0.8):
                         split_type = "val"
                     else:
@@ -506,38 +518,4 @@ class PrepData:
                     print(f"  {feature}: {feature_dict[feature]}")
     
                 print("..." if len(feature_dict) > max_features else "")
-                    
-    @public_method
-    def prep(self,
-             engineer=False,
-             shape=False,
-             split=False,
-             normalize=False,
-             dtype=False,
-             store=False):
-        """
-        Facilitate the data preparation process:
-            1) Engineer, encode, and store features.
-            2) Shape the data.
-            3) Split the data.
-            4) Normalize the data.
-            5) Type the data.
-            6) Store the data.
-        
-        The end product is a directory with train, val, and test subdirectories
-        filled with batched files (.npy, .h5, .parquet, or TFRecord) which 
-        enables out-of-the-box data for training and model validation.
-        """
-        if engineer:
-            self.engineer()
-        if shape:
-            print("Shape function")
-        if split:
-            print("Split function")
-        if normalize:
-            print("Normalize function")
-        if dtype:
-            print("Dtype function")
-        if store:
-            print("Store function")
-        print("This is the main public function!")
+                

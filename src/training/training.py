@@ -4,7 +4,7 @@
 from components import CleanRawData, PrepData, Train
 
 
-def training(clean=False, prep=True, train=False):
+def training(clean=False, prep=False, train=True):
     """
     Orchestrate the entire process of loading and preprocessing the training data,
     defining model architectures and custom functions, and saving results
@@ -72,8 +72,8 @@ def training(clean=False, prep=True, train=False):
         # Which prep processes do you want to run
         engineer=False
         scale=False
-        prep_and_save=False
-        validate_data=True
+        prep_and_save=True
+        validate_data=False
         
         if engineer:
             prep.engineer(mode='all')
@@ -86,6 +86,9 @@ def training(clean=False, prep=True, train=False):
         
     if train:
         train = Train()
+        model = train._load_model()
+        model = train._compile_model(model)
+        train._fit_model(model)
         
     
 if __name__ == "__main__":
