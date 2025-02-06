@@ -3,31 +3,76 @@
 
 import numpy as np
 import pandas as pd
+from functools import reduce
+import operator
 
 
 def filter_hourly(df):
     """
-    Find rows in df['close_standard_1'] with values above 1.01, below 0.99, 
-    or containing NaN values.
+    Filters rows in the DataFrame `df` based on different thresholds for columns with names
+    following the pattern <open/high/low/close>_standard_<i>.
+
+    The thresholds are applied as follows:
+      - For columns with indices 36 to 48: a value is flagged if it is above 1.03 or below 0.97.
+      - For columns with indices 18 to 35: a value is flagged if it is above 1.05 or below 0.95.
+      - For columns with indices 1 to 17: a value is flagged if it is above 1.07 or below 0.93.
+    
+    Additionally, rows that contain any NaN values (in any column) are also flagged.
+
+    Finally, the function returns a list of tuples containing the ('pair', 'date') values
+    for the rows that meet any of these conditions.
+
+    Args:
+        df (pandas.DataFrame): The DataFrame to filter. It must contain at least the columns 'pair' and 'date',
+                               as well as the <open/high/low/close>_standard_<i> columns.
 
     Returns:
-        List of tuples containing ('pair', 'date') for matching rows.
+        List[Tuple]: A list of (pair, date) tuples for the rows that meet the filter conditions.
     """
-    if 'pair' not in df.columns or 'date' not in df.columns or 'close_standard_1' not in df.columns:
-        raise ValueError("DataFrame must contain 'pair', 'date', and 'close_standard_1' columns.")
+    conditions = []
+    prefixes = ['open', 'high', 'low', 'close']
 
-    # Apply filtering condition (values above 1.01 or below 0.99)
-    filtered_rows = df[(df['close_standard_1'] > 1.01) | (df['close_standard_1'] < 0.99)]
-    
-    # Find rows with NaN values in any column
-    nan_rows = df[df.isna().any(axis=1)]  # Any column containing NaN
+    # For columns 36 to 48: ±3% threshold (values > 1.03 or < 0.97)
+    for i in range(36, 49):  # 49 is exclusive
+        for prefix in prefixes:
+            col = f"{prefix}_standard_{i}"
+            if col in df.columns:
+                cond = (df[col] > 1.03) | (df[col] < 0.97)
+                conditions.append(cond)
 
-    # Extract (pair, date) tuples
-    filtered_list = list(zip(filtered_rows['pair'], filtered_rows['date']))
-    nan_list = list(zip(nan_rows['pair'], nan_rows['date']))
+    # For columns 18 to 35: ±5% threshold (values > 1.05 or < 0.95)
+    for i in range(18, 36):
+        for prefix in prefixes:
+            col = f"{prefix}_standard_{i}"
+            if col in df.columns:
+                cond = (df[col] > 1.05) | (df[col] < 0.95)
+                conditions.append(cond)
 
-    # Combine both lists
-    return filtered_list + nan_list
+    # For columns 1 to 17: ±7% threshold (values > 1.07 or < 0.93)
+    for i in range(1, 18):
+        for prefix in prefixes:
+            col = f"{prefix}_standard_{i}"
+            if col in df.columns:
+                cond = (df[col] > 1.07) | (df[col] < 0.93)
+                conditions.append(cond)
+
+    # Combine all the conditions with bitwise OR; if no condition exists, use a default (all False)
+    if conditions:
+        combined_condition = reduce(operator.or_, conditions)
+    else:
+        combined_condition = pd.Series(False, index=df.index)
+
+    # Filter rows based on the combined condition.
+    filtered_rows = df[combined_condition]
+
+    # Find rows with NaN values in any column.
+    nan_rows = df[df.isna().any(axis=1)]
+
+    # Combine both DataFrames. This avoids duplicates if some rows meet both conditions.
+    combined = pd.concat([filtered_rows, nan_rows]).drop_duplicates()
+
+    # Extract (pair, date) tuples.
+    return list(zip(combined['pair'], combined['date']))
 
 
 def filter_targets(df):

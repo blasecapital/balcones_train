@@ -3,7 +3,7 @@
 
 config = {
     # Arguements for load_data
-    "load_mode": "pair", # Options: "full", "batch", or "pair"
+    "load_mode": "full", # Options: "full", "batch", or "pair"
     "collect_pairs": "list", # Options: query or list
     "pair_query": {"BASE_DATABASE": """
                    SELECT DISTINCT(pair) FROM hourly_exchange_rates

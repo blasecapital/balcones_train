@@ -7,12 +7,16 @@ import json
 import re
 import glob
 import os
+from datetime import datetime
+import csv
+import shutil
 
 # Suppress TensorFlow INFO logs and disable oneDNN custom operations
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import tensorflow as tf
+import numpy as np
 
 from utils import EnvLoader, public_method
 
@@ -32,8 +36,6 @@ class Train:
         self.model_modules_path = self.config.get("model_modules_path")
         self.model_args = self.config.get("model_args")
         self.initial_bias_path = self.config.get("initial_bias_path")
-        self.model_save_path = self.config.get("model_save_path")
-        self.save_requirements_path = self.config.get("save_requirements_path")
         self.model_function = self.config.get("model_function")
         self.custom_loss = self.config.get("custom_loss")
         self.loss = self.config.get("loss")
@@ -47,6 +49,8 @@ class Train:
         self.checkpoint = self.config.get("checkpoint")
         self.feature_categories = self.config.get("feature_categories")
         self.weight_dict_path = self.config.get("weight_dict_path")
+        self.iteration_dir = self.config.get("iteration_dir")
+        self.requirements_paths = self.config.get("requirements_paths")
         
     def _import_function(self, module_path, function_name):
         """
@@ -63,7 +67,8 @@ class Train:
         
         return filter_function
     
-    def _load_model(self):
+    @public_method
+    def load_model(self):
         """
         Load a model defined in the model_specs.
         """
@@ -77,8 +82,9 @@ class Train:
             raise TypeError("create_model is not callable")
             
         return model
-
-    def _compile_model(self, model):
+    
+    @public_method
+    def compile_model(self, model):
         """
         Compile the model based on its specifications.
         
@@ -105,11 +111,23 @@ class Train:
         else:
             # If `optimizer_config` is not a dictionary, assume it's a valid TensorFlow optimizer
             optimizer = tf.keras.optimizers.get(optimizer_config)
+            
+        # Determine the loss function:
+        # If custom_loss is provided (non-empty dict), import and use that custom loss.
+        if self.custom_loss and isinstance(self.custom_loss, dict) and len(self.custom_loss) > 0:
+            # Use self.model_modules_path for the module path and "custom_loss" as the function name.
+            path = self.custom_loss["custom_loss_path"]
+            module_name = self.custom_loss["module_name"]
+            loss_fn = self._import_function(path, module_name)
+            print("Using custom loss function.")
+        else:
+            loss_fn = self.loss
+            print("Using standard loss function:", self.loss)
         
         # Compile the model
         model.compile(
             optimizer=optimizer,
-            loss=self.loss,
+            loss=loss_fn,
             metrics=self.metrics
         )
         
@@ -265,78 +283,7 @@ class Train:
                     file_dict[num]['targets'].append(os.path.join(self.data_dir, f))
 
         return file_dict  # Returns {number: {features: [...], targets: [...]}}
-
-    def _fit_model(self, model):
-        """
-        Iteratively loads aligned feature and target TFRecord files in batches,
-        ensuring each epoch processes all aligned sets (0,1,2,...) before validation.
-        Supports dynamically specified feature categories.
-        """
-        # Attempt to load class weights if the file exists
-        if os.path.exists(self.weight_dict_path):
-            with open(self.weight_dict_path, 'r') as f:
-                class_weights = json.load(f)
-            # Convert keys from strings to ints
-            class_weights = {int(k): v for k, v in class_weights.items()}
-            print("Successfully loaded class weights.")
-        
-        tfrecord_files = sorted([f for f in os.listdir(self.data_dir) if f.endswith('.tfrecord')])
     
-        # Ensure all specified feature categories exist
-        required_categories = set(self.feature_categories.keys())
-        existing_categories = set(f.split('_')[0] for f in tfrecord_files if 'features' in f)
-        missing_categories = required_categories - existing_categories
-        if missing_categories:
-            raise ValueError(f"Missing required feature categories: {missing_categories}")
-    
-        for epoch in range(self.epochs):
-            print(f"\nEpoch {epoch + 1}/{self.epochs}")
-    
-            # Training Phase (ensure all feature sets are loaded together)
-            train_groups = {category: self._group_files_by_number(category, 'train') for category in self.feature_categories}
-    
-            # Loop through all numbered datasets (0, 1, 2, etc.)
-            for num in sorted(train_groups[next(iter(self.feature_categories))].keys()):
-                feature_files = {category: train_groups[category].get(num, {}).get('features', []) for category in self.feature_categories}
-                target_files = train_groups[next(iter(self.feature_categories))].get(num, {}).get('targets', [])
-    
-                # Ensure all feature categories are present
-                if any(not files for files in feature_files.values()) or not target_files:
-                    continue  # Skip if any feature category is missing
-    
-                print(f"Training on set {num}")
-    
-                # Load dataset with all feature sets
-                train_dataset = self._load_tfrecord_dataset(feature_files, target_files)
-    
-                # Train model with all feature inputs; include class_weight if available
-                if class_weights is not None:
-                    model.fit(train_dataset, epochs=1, verbose=1, class_weight=class_weights)
-                else:
-                    model.fit(train_dataset, epochs=1, verbose=1)
-    
-                del train_dataset
-                gc.collect()
-    
-            # Validation Phase
-            val_groups = {category: self._group_files_by_number(category, 'val') for category in self.feature_categories}
-    
-            for num in sorted(val_groups[next(iter(self.feature_categories))].keys()):
-                feature_files = {category: val_groups[category].get(num, {}).get('features', []) for category in self.feature_categories}
-                target_files = val_groups[next(iter(self.feature_categories))].get(num, {}).get('targets', [])
-    
-                if any(not files for files in feature_files.values()) or not target_files:
-                    continue  
-    
-                print(f"Validating on set {num}")
-    
-                val_dataset = self._load_tfrecord_dataset(feature_files, target_files)
-                model.evaluate(val_dataset, verbose=1)
-    
-                del val_dataset
-                gc.collect()
-            
-    ###########################################################################
     def _save_model_and_weights(self, model, model_name, save_dir):
         """
         Save the entire model and its weights separately.
@@ -361,43 +308,210 @@ class Train:
         # Save only the weights
         model.save_weights(weights_path)
         print(f"Model weights saved to: {weights_path}")
-            
-    def _save_requirements(self, model_name):
+        
+    def _copy_file(self, source_path, export_path):
         """
-        Saves the imported `config` dictionary and the `process_data_config` to a new `.py` 
-        file in the specified `save_config_path` directory. 
-    
+        Copies a file from source_path to export_path.
+        
+        If export_path is a directory, the file is copied into that directory with its original filename.
+        If export_path is a full file path, the file is copied to that location.
+        
         Args:
-            model_name (str): The name of the model for which the requirements are being saved.
+            source_path (str): The path of the file to copy.
+            export_path (str): The destination directory or file path where the file should be saved.
         
-        Raises:
-            FileExistsError: If the `.py` file already contains a `config` dictionary.
-            Exception: If the `save_config_path` is invalid or inaccessible.
+        Returns:
+            None
         """
-        # Validate the save path
-        save_config_dir = self.model_specs[model_name]['save_requirements_path']
-        if not os.path.isdir(save_config_dir):
-            raise Exception(f"The specified path {save_config_dir} is not a valid directory.")
+        # Check if the source file exists.
+        if not os.path.isfile(source_path):
+            print(f"Source file does not exist: {source_path}")
+            return
     
-        # Construct the file path for the config file
-        save_file_path = os.path.join(save_config_dir, 'requirements.py')
-                        
-        # Collect the process_data_config
-        process_data_config = self._collect_preprocessing_config()
+        # Determine the final destination path.
+        if os.path.isdir(export_path):
+            # If export_path is a directory, append the source filename.
+            destination_path = os.path.join(export_path, os.path.basename(source_path))
+        else:
+            # If export_path is a full file path, use it directly.
+            destination_path = export_path
+            # Ensure the destination directory exists.
+            dest_dir = os.path.dirname(destination_path)
+            if dest_dir and not os.path.exists(dest_dir):
+                os.makedirs(dest_dir)
         
-        with open(save_file_path, 'w') as file:
-            file.write("# Auto-generated configuration file\n\n")
-            file.write("# Main configuration\n")
-            file.write("config = ")
-            file.write(repr(self.config))  # Write the dictionary as a string
-            file.write("\n\n")
+        try:
+            shutil.copy2(source_path, destination_path)
+            print(f"File successfully copied from {source_path} to {destination_path}")
+        except Exception as e:
+            print(f"Error copying file: {e}")
+
+    @public_method
+    def fit_model(self, model):
+        """
+        Iteratively loads aligned feature and target TFRecord files in batches,
+        ensuring each epoch processes all aligned sets (0,1,2,...) before validation.
+        Supports dynamically specified feature categories.
+        """
+        # Create the unique save directory name
+        now = datetime.now()
+        dt_string = now.strftime("%d_%m_%Y_%H_%M_%S")
+        save_dir = os.path.join(self.iteration_dir, dt_string)
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+            print("Successfully created the save directory:", save_dir)
             
-            file.write("# Preprocessing configuration\n")
-            file.write("process_data_config = ")
-            file.write(repr(process_data_config))  # Write the `process_data_config` dictionary as a string
+        # Copy the config.py and file with model architecture information
+        self._copy_file(self.requirements_paths["config"], save_dir)
+        self._copy_file(self.requirements_paths["model"], save_dir)
         
-        print(f"Configuration saved successfully to {save_file_path}")
+        # Attempt to load class weights if the file exists
+        if os.path.exists(self.weight_dict_path):
+            with open(self.weight_dict_path, 'r') as f:
+                class_weights = json.load(f)
+            # Convert keys from strings to ints
+            class_weights = {int(k): v for k, v in class_weights.items()}
+            print("Successfully loaded class weights.")
         
+        tfrecord_files = sorted([f for f in os.listdir(self.data_dir) if f.endswith('.tfrecord')])
+    
+        # Ensure all specified feature categories exist
+        required_categories = set(self.feature_categories.keys())
+        existing_categories = set(f.split('_')[0] for f in tfrecord_files if 'features' in f)
+        missing_categories = required_categories - existing_categories
+        if missing_categories:
+            raise ValueError(f"Missing required feature categories: {missing_categories}")
+    
+        for epoch in range(self.epochs):
+            print(f"\nEpoch {epoch + 1}/{self.epochs}")
+            
+            # Initialize accumulators for training metrics.
+            train_loss_sum = 0.0
+            train_acc_sum = 0.0
+            num_train_batches = 0
+    
+            # Training Phase (ensure all feature sets are loaded together)
+            train_groups = {category: self._group_files_by_number(category, 'train') 
+                            for category in self.feature_categories}
+    
+            # Loop through all numbered datasets (0, 1, 2, etc.)
+            for num in sorted(train_groups[next(iter(self.feature_categories))].keys()):
+                feature_files = {
+                    category: train_groups[category].get(num, {}).get('features', []) 
+                    for category in self.feature_categories}
+                target_files = train_groups[
+                    next(iter(self.feature_categories))].get(num, {}).get('targets', [])
+    
+                # Ensure all feature categories are present
+                if any(not files for files in feature_files.values()) or not target_files:
+                    continue  # Skip if any feature category is missing
+    
+                print(f"Training on set {num}")
+    
+                # Load dataset with all feature sets
+                train_dataset = self._load_tfrecord_dataset(feature_files, target_files)
+    
+                # Train model with all feature inputs; include class_weight if available
+                if class_weights is not None:
+                    history = model.fit(train_dataset, epochs=1, verbose=1, class_weight=class_weights)
+                else:
+                    history = model.fit(train_dataset, epochs=1, verbose=1)
+                    
+                # Assuming 'loss' and 'accuracy' are tracked metrics
+                # (Update the keys if your metric names differ.)
+                batch_loss = history.history.get('loss', [0])[-1]
+                batch_acc = history.history.get('accuracy', [0])[-1]
+                train_loss_sum += batch_loss
+                train_acc_sum += batch_acc
+                num_train_batches += 1
+    
+                del train_dataset
+                gc.collect()
+                
+            # Compute average training metrics for this epoch
+            avg_train_loss = train_loss_sum / num_train_batches if num_train_batches else 0
+            avg_train_acc = train_acc_sum / num_train_batches if num_train_batches else 0
+    
+            # Initialize accumulators for validation metrics.
+            val_loss_sum = 0.0
+            val_acc_sum = 0.0
+            num_val_batches = 0
+            
+            # We also want to accumulate per-sample predictions for the CSV.
+            pred_rows = []  # Each element: [epoch, predicted_category, actual_target, prediction_confidence]
+                
+            # Validation Phase
+            val_groups = {category: self._group_files_by_number(category, 'val') 
+                          for category in self.feature_categories}
+    
+            for num in sorted(val_groups[next(iter(self.feature_categories))].keys()):
+                feature_files = {category: val_groups[category].get(num, {}).get('features', []) 
+                                 for category in self.feature_categories}
+                target_files = val_groups[next(iter(self.feature_categories))].get(num, {}).get('targets', [])
+    
+                if any(not files for files in feature_files.values()) or not target_files:
+                    continue  
+    
+                print(f"Validating on set {num}")
+    
+                val_dataset = self._load_tfrecord_dataset(feature_files, target_files)
+                results = model.evaluate(val_dataset, verbose=1)
+                # Typically, results[0] is loss and results[1] is accuracy.
+                val_loss_sum += results[0]
+                if len(results) > 1:
+                    val_acc_sum += results[1]
+                num_val_batches += 1
+                
+                # Now, run predictions on this validation chunk.
+                # Since our dataset is a tf.data.Dataset of (features, target),
+                # we use model.predict to get the output probabilities.
+                predictions = model.predict(val_dataset)
+                # Collect actual targets from the dataset.
+                # (We assume that the dataset yields (features, target) tuples.)
+                actual_targets = []
+                for _, t in val_dataset:
+                    # Flatten in case targets come with extra dimensions.
+                    actual_targets.extend(t.numpy().flatten().tolist())
+                # Ensure predictions is a NumPy array.
+                predictions = np.array(predictions)
+                # For each sample, the predicted category is the argmax and the confidence is the max probability.
+                predicted_categories = np.argmax(predictions, axis=1)
+                confidences = np.max(predictions, axis=1)
+                # Add one row per sample.
+                for pred, actual, conf in zip(predicted_categories, actual_targets, confidences):
+                    pred_rows.append([epoch + 1, pred, actual, conf])
+    
+                del val_dataset
+                gc.collect()
+                
+            # Compute average validation metrics for this epoch
+            avg_val_loss = val_loss_sum / num_val_batches if num_val_batches else 0
+            avg_val_acc = val_acc_sum / num_val_batches if num_val_batches else 0
+    
+            # Construct a filename that includes these metrics.
+            # For example: "epoch1_trainLoss_0.1234_trainAcc_0.9876_valLoss_0.2345_valAcc_0.9765.h5"
+            model_filename = (
+                f"epoch{epoch+1}_"
+                f"trainLoss_{avg_train_loss:.4f}_"
+                f"trainAcc_{avg_train_acc:.4f}_"
+                f"valLoss_{avg_val_loss:.4f}_"
+                f"valAcc_{avg_val_acc:.4f}.h5"
+            )
+            model_path = os.path.join(save_dir, model_filename)
+            model.save(model_path)
+            model.save_weights(model_path)
+            print(f"Saved model for epoch {epoch+1} at: {model_path}")
+            
+            # Append per-sample predictions to the predictions CSV.
+            predictions_csv_path = os.path.join(save_dir, f"{epoch}_predictions.csv")
+            with open(predictions_csv_path, mode="a", newline="") as csvfile:
+                writer = csv.writer(csvfile)
+                # Write header row for sample-level predictions
+                writer.writerow(["epoch", "predicted_category", "actual_target", "prediction_confidence"])
+                for row in pred_rows:
+                    writer.writerow(row)
+            print(f"Appended predictions for epoch {epoch+1} to CSV file: {predictions_csv_path}")
+            
     @public_method
     def train_models(self):
         """
@@ -406,14 +520,7 @@ class Train:
         Returns:
             dict: Training histories for each model.
         """
-        histories = {}
-        for model_name in self.model_specs:
-            print(f"Starting training for model '{model_name}'...") 
-            self._save_requirements(model_name)
-            model = self._load_model(model_name)
-            model = self._compile_model(model, model_name)
-            history = self._fit_model(model, model_name)
-            histories[model_name] = history
-            print(f"Completed training for model '{model_name}'.")
-        return histories
+        model = self.load_model()
+        model = self.compile_model(model)
+        self.fit_model(model)
     

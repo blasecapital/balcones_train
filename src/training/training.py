@@ -51,16 +51,16 @@ def training(clean=False, prep=False, train=True):
         if inspect:        
             clean.inspect_data(
                 data_keys=['iter0_hourly_features'],
-                describe_features=False,
+                describe_features=True,
                 describe_targets=False,
                 target_type='cat',
-                plot_features=True,
+                plot_features=False,
                 plot_mode='rate',
                 plot_skip=12
                 )
             
         if filter_keys:
-            clean.clean()
+            clean.clean(data_keys=['iter0_hourly_features'])
             
         if align:
             clean.align()
@@ -76,7 +76,7 @@ def training(clean=False, prep=False, train=True):
         validate_data=False
         
         if engineer:
-            prep.engineer(mode='all')
+            prep.engineer(mode='feature')
         if scale:
             prep.scale()
         if prep_and_save:
@@ -86,9 +86,7 @@ def training(clean=False, prep=False, train=True):
         
     if train:
         train = Train()
-        model = train._load_model()
-        model = train._compile_model(model)
-        train._fit_model(model)
+        train.train_models()
         
     
 if __name__ == "__main__":

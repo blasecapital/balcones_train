@@ -1054,7 +1054,6 @@ class CleanRawData:
                     for table in tables:
                         query = f"""
                         SELECT * FROM {table}
-                        WHERE pair = 'AUDUSD'
                         """
                         chunk_keys = self.ltd.chunk_keys(
                             mode='manual',

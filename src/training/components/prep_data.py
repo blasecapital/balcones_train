@@ -377,7 +377,8 @@ class PrepData:
         Args:
             data (pd.DataFrame): DataFrame containing the target column.
             target_col (str): Name of the column to use for computing class weights.
-            fin (bool): True if this is the final training chunk, triggering calculation of final weights and saving them.
+            fin (bool): True if this is the final training chunk, triggering 
+            calculation of final weights and saving them.
             
         The function updates self.weights_dict with the count of each class from the current chunk.
         If fin is True, it computes the final class weights using an inverse frequency method, 
@@ -399,33 +400,55 @@ class PrepData:
             total_samples = sum(self.weights_dict.values())
             num_classes = len(self.weights_dict)
             # Compute weights: weight for class i = total_samples / (num_classes * count_i)
-            final_weights = {cls: total_samples / (num_classes * count) for cls, count in self.weights_dict.items()}
+            final_weights = {cls: total_samples / (num_classes * count) for cls, 
+                             count in self.weights_dict.items()}
             
             # Save the final weights to the specified JSON file.
             with open(self.weight_dict_save_path, 'w') as f:
                 json.dump(final_weights, f)
             
-            print("Final class weights saved to {}: {}".format(self.weight_dict_save_path, final_weights))
+            print("Final class weights saved to {}: {}".format(
+                self.weight_dict_save_path, final_weights))
         
     @public_method
     def save_batches(self):
         """
         Split, type features and targets, scale and reshape features, and
-        save completely prepped data in batches to TFRecord files
-        for efficient, iterative loading in model training.
+        save completely prepped data in batches to TFRecord files for efficient,
+        iterative loading in model training.
+    
+        This function ensures that each table uses the same set of chunk_keys.
+        The steps are:
+          1. For each key in self.prep_and_save_dict, determine the list of tables.
+          2. For each table, compute the chunk_keys.
+          3. Find the set of chunk_keys from the table that has the maximum length.
+          4. Process each table using that global set of chunk_keys.
         """
         for key in self.prep_and_save_dict.keys():
             db_path = self.env_loader.get(self.prep_and_save_dict[key][0])
             table_list = list(self.prep_and_save_dict[key][1].keys())
             
+            # Step 1: Compute chunk keys for each table and store in a dict.
+            chunk_keys_by_table = {}
             for table in table_list:
-                print(f"Beginning to process {table}...")
-                query = f"""SELECT * FROM {table}"""
+                print(f"Determining chunk keys for table: {table}...")
+                query = f"SELECT * FROM {table}"
                 chunk_keys = self.ltd.chunk_keys(
                     mode='manual',
                     db_path=db_path,
                     query=query
-                    )
+                )
+                chunk_keys_by_table[table] = chunk_keys
+                
+            # Step 2: Find the table with the maximum number of chunk keys.
+            # This is our global chunk key set.
+            max_table = max(chunk_keys_by_table, key=lambda t: len(chunk_keys_by_table[t]))
+            global_chunk_keys = chunk_keys_by_table[max_table]
+            print(f"Using chunk keys from table '{max_table}' with {len(global_chunk_keys)} chunks for alignment.")
+            
+            for table in table_list:
+                print(f"Beginning to process {table}...")
+                query = f"""SELECT * FROM {table}"""
                 
                 # Load scaler if needed
                 scale = False
@@ -434,8 +457,11 @@ class PrepData:
                                           f'{table}_scaler' + '.pkl')
                     scaler = joblib.load(scaler_path)
                     scale = True
-                        
-                for idx, chunk_key in enumerate(chunk_keys):
+                
+                # Process each chunk using the global chunk keys.
+                n_chunks = len(global_chunk_keys)
+                n_train = int(n_chunks * 0.6)
+                for idx, chunk_key in enumerate(global_chunk_keys):
                     print(f"Processing chunk {chunk_key[0][0]} - {chunk_key[1][0]}...")
                     data = self.ltd.load_chunk(
                         mode='manual',
@@ -464,14 +490,13 @@ class PrepData:
                         data = pd.DataFrame(data, columns=data_columns)
                         
                     # Determine dataset split: 60% train, 20% val, 20% test
-                    n_train = int(len(chunk_keys) * 0.6) 
                     if idx < n_train:
                         split_type = "train"
                         if self.prep_and_save_dict[key][1][table].get('weights_dict'):
                             target_col = self.prep_and_save_dict[key][1][table]['weights_dict']
                             fin = idx == n_train - 1
                             self._create_and_save_weights_dict(data, target_col, fin)
-                    elif idx < int(len(chunk_keys) * 0.8):
+                    elif idx < int(n_chunks * 0.8):
                         split_type = "val"
                     else:
                         split_type = "test"

@@ -347,7 +347,7 @@ def true_outcome(index, df, multipliers, widemultipliers, n):
 
 
 def update_targets(df, multipliers, widemultipliers, n=336):
-    pair_name = normalize_pair_name(df['pair'][0])
+    pair_name = normalize_pair_name(df['pair'].iloc[0])
     df = add_open_prices(df, pair_name, multipliers, widemultipliers)
     df = calc_sl_tp(df, pair_name)
     

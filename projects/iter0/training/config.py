@@ -6,17 +6,13 @@ config = {
     # Name the data key (name of feature set or target set), write the .env
     # reference name for the source db_path and the associated query
     "source_query": {
-        "iter0_hourly_features" : ("FEATURE_DATABASE", 
+        "iter0_hourly_features" : ("CLEAN_FEATURE_DATABASE", 
          """
          SELECT * FROM hourly_features
-         WHERE pair IN ('AUDUSD', 'EURUSD')
-         AND date > '2023-10-01'
-         ORDER BY pair, date
          """),
          "iter0_targets" : ("TARGET_DATABASE",
          """
          SELECT * FROM targets
-         WHERE pair = 'AUDUSD'
          """)},
          
     "project_directory": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt'
@@ -39,7 +35,6 @@ config = {
         "iter0_hourly_features": ("FEATURE_DATABASE", 
          """
          SELECT * FROM hourly_features
-         WHERE pair = 'AUDUSD'
          """,
          'filter_hourly'),
         "iter0_targets": ("TARGET_DATABASE",
@@ -78,7 +73,6 @@ config = {
             "CLEAN_FEATURE_DATABASE",
             """
             SELECT date, pair FROM hourly_features
-            WHERE pair = 'AUDUSD'
             """,
             'feature_engineering',
             'dense_features'
@@ -182,7 +176,7 @@ config = {
         'n_ohlc_features': 4, # window
         'l2_strength': 0.00, 
         'dropout_rate': 0.0,
-        'n_dense_features': 3, 
+        'n_dense_features': 47, 
         'activation': 'relu', 
         'n_targets': 3, 
         'output_activation': 'softmax'
@@ -192,20 +186,29 @@ config = {
                          r"\deep_learning\projects\iter0\training"
                          r"\wightes_dict\target_weights_dict.json"), 
     "data_dir": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt'
-                 r'\deep_learning\projects\iter0\training\prepped_data'),
-    "model_save_path": (r'C:\Users\brand\OneDrive'
-                        r'\Blase Capital Mgmt\deep_learning'
-                        r'\projects\iter0\training'),
-    "save_requirements_path": (r'C:\Users\brand\OneDrive'
-                               r'\Blase Capital Mgmt\deep_learning'
-                               r'\projects\iter0\training'),
-    "custom_loss": {},
+                 r'\deep_learning\projects\iter0\training\prepped_data'),    
+    "custom_loss": {"custom_loss_path": (r'C:\Users\brand\OneDrive'
+                                         r'\Blase Capital Mgmt\deep_learning'
+                                         r'\projects\iter0\training'
+                                         r'\iter0_training.py'),
+                    "module_name": "custom_loss"},
     "loss": {"output_layer": "sparse_categorical_crossentropy"},
     "metrics": ["accuracy"],
     "learning_rate_schedule": [],
-    "optimizer": {"type": "adam", "learning_rate": 0.0001},
+    "optimizer": {"type": "adam", "learning_rate": 0.0001, "clipvalue": 1.0},
     "epochs": 50,
-    "batch_size": 32,
+    "batch_size": 512,
     "early_stopping": '',
-    "checkpoint": ''
+    "checkpoint": '',
+    "iteration_dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
+                      r"\deep_learning\projects\iter0\training\iterations"),
+    # Specify the file paths of the iteration config.py and model architecture
+    # file
+    "requirements_paths": {
+        "config": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
+                   r"\projects\iter0\training\config.py"),
+        "model": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
+                  r"\projects\iter0\training\iter0_training.py")
+        }
     }
+        
