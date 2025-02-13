@@ -8,15 +8,20 @@ import re
 import glob
 import os
 from datetime import datetime
-import csv
 import shutil
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="tensorflow")
+
 # Suppress TensorFlow INFO logs and disable oneDNN custom operations
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import tensorflow as tf
+from tensorflow import keras
+keras.mixed_precision.set_global_policy("mixed_float16")
 import numpy as np
+import pandas as pd
 
 from utils import EnvLoader, public_method
 
@@ -35,19 +40,17 @@ class Train:
         # Initialize config attributes
         self.model_modules_path = self.config.get("model_modules_path")
         self.model_args = self.config.get("model_args")
-        self.initial_bias_path = self.config.get("initial_bias_path")
         self.model_function = self.config.get("model_function")
+        self.callback_function = self.config.get("callback_function")
         self.custom_loss = self.config.get("custom_loss")
         self.loss = self.config.get("loss")
         self.metrics = self.config.get("metrics")
-        self.learning_rate_schedule = self.config.get("learning_rate_schedule")
         self.optimizer = self.config.get("optimizer")
         self.data_dir = self.config.get("data_dir")
         self.epochs = self.config.get("epochs")
         self.batch_size = self.config.get("batch_size")
-        self.early_stopping = self.config.get("early_stopping")
-        self.checkpoint = self.config.get("checkpoint")
         self.feature_categories = self.config.get("feature_categories")
+        self.use_weight_dict = self.config.get("use_weight_dict")
         self.weight_dict_path = self.config.get("weight_dict_path")
         self.iteration_dir = self.config.get("iteration_dir")
         self.requirements_paths = self.config.get("requirements_paths")
@@ -63,10 +66,42 @@ class Train:
         spec.loader.exec_module(module)
     
         # Access the specified filter function dynamically
-        filter_function = getattr(module, function_name)
+        function = getattr(module, function_name)
         
-        return filter_function
+        return function
     
+    def _initial_bias(self):
+        """
+        Compute initial bias for model output layer based on class distribution.
+        
+        Returns:
+            np.array: Initial bias values for each target class.
+        """
+        # Check if initial_bias is enabled in model_args
+        if not self.model_args.get("initial_bias", False):
+            return None  # No initial bias required
+    
+        # Load class weights from the JSON file
+        if not os.path.exists(self.weight_dict_path):
+            raise FileNotFoundError(f"Weight dictionary not found at: {self.weight_dict_path}")
+    
+        with open(self.weight_dict_path, "r") as f:
+            class_weights = json.load(f)
+    
+        # Convert keys to integers (as JSON keys are stored as strings)
+        class_weights = {int(k): v for k, v in class_weights.items()}
+    
+        # Compute class probabilities
+        total_weight = sum(class_weights.values())
+        class_probs = {k: v / total_weight for k, v in class_weights.items()}
+    
+        # Compute log-odds for initial bias
+        epsilon = 1e-8  # Small value to prevent log(0)
+        initial_bias = np.log([class_probs[i] / (1 - class_probs[i] + epsilon) for i in sorted(class_probs)])
+    
+        print("Computed Initial Bias.")
+        return initial_bias
+        
     @public_method
     def load_model(self):
         """
@@ -74,6 +109,14 @@ class Train:
         """
         # Load the create_model function for the iteration
         create_model = self._import_function(self.model_modules_path, self.model_function)
+        
+        # Compute initial bias if needed
+        initial_bias = self._initial_bias()
+        
+        # Pass model arguments, updating the initial_bias field if applicable
+        model_args = self.model_args.copy()  # Avoid modifying the original config
+        if initial_bias is not None:
+            model_args["initial_bias"] = initial_bias
         
         # Pass the model's parameters from the config dict
         if callable(create_model):
@@ -181,6 +224,19 @@ class Train:
 
         with open(json_file, "r") as f:
             metadata = json.load(f)
+            
+            # Auto-fix incorrect data types
+        for key, value in metadata.items():
+            if value == "int64":
+                metadata[key] = tf.io.FixedLenFeature([], tf.int64)  # Ensure correct int64 format
+            elif value == "float32":
+                metadata[key] = tf.io.FixedLenFeature([], tf.float32)  # Ensure correct float32 format
+            elif value == "string":
+                metadata[key] = tf.io.VarLenFeature(tf.string)  # Use VarLenFeature for string values
+            elif value == "object":
+                metadata[key] = tf.io.VarLenFeature(tf.string) # Comvert objects to strings
+            else:
+                raise ValueError(f"Unsupported data type '{value}' for key '{key}' in target metadata.")
 
         return metadata
 
@@ -212,6 +268,7 @@ class Train:
         Ensures correct structure for model input.
         """
         feature_metadata = {category: self._load_feature_metadata(category) for category in self.feature_categories}
+        target_metadata = self._load_target_metadata()
     
         feature_datasets = {
             category: tf.data.TFRecordDataset(files).map(
@@ -220,22 +277,32 @@ class Train:
             ) for category, files in feature_files.items()
         }
     
-        # Load and parse target dataset separately (only once)
+        # Load and parse target dataset separately (return full data + `target`)
+        def parse_target_fn(x):
+            parsed = tf.io.parse_single_example(x, target_metadata)
+            return parsed, parsed['target']  # Return full parsed targets & just `target` for training
+    
         target_dataset = tf.data.TFRecordDataset(target_files).map(
-            lambda x: tf.io.parse_single_example(
-                x, {'target': tf.io.FixedLenFeature([], tf.int64)}
-            )['target'], num_parallel_calls=tf.data.AUTOTUNE
+            parse_target_fn, num_parallel_calls=tf.data.AUTOTUNE
         )
+    
+        # Extract only the target column for training
+        target_labels_dataset = target_dataset.map(lambda x, y: y, num_parallel_calls=tf.data.AUTOTUNE)
+    
+        # Zip full target data separately for saving CSV
+        full_target_dataset = target_dataset.map(lambda x, y: x, num_parallel_calls=tf.data.AUTOTUNE)
     
         # Convert feature dictionary to tuple (preserves ordering)
         feature_tuple_dataset = tf.data.Dataset.zip((
             tuple(feature_datasets.values()),  # Tuple of feature inputs
-            target_dataset                     # Single target label
+            target_labels_dataset  # Only target label for training
         ))
     
+        # Batch and prefetch for efficiency
         feature_tuple_dataset = feature_tuple_dataset.batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
-        
-        return feature_tuple_dataset
+        full_target_dataset = full_target_dataset.batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
+    
+        return feature_tuple_dataset, full_target_dataset, list(target_metadata.keys())
 
     def _match_feature_target_files(self, feature_category, dataset_type):
         """
@@ -283,31 +350,6 @@ class Train:
                     file_dict[num]['targets'].append(os.path.join(self.data_dir, f))
 
         return file_dict  # Returns {number: {features: [...], targets: [...]}}
-    
-    def _save_model_and_weights(self, model, model_name, save_dir):
-        """
-        Save the entire model and its weights separately.
-    
-        Args:
-            model (tf.keras.Model): The trained model.
-            model_name (str): Name of the model.
-            save_dir (str): Directory path where the model and weights should be saved.
-        """
-        # Ensure the save directory exists
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-    
-        # Define file paths
-        model_path = os.path.join(save_dir, f"{model_name}.keras")
-        weights_path = os.path.join(save_dir, f"{model_name}.weights.h5")
-    
-        # Save the full model
-        model.save(model_path)
-        print(f"Full model saved to: {model_path}")
-    
-        # Save only the weights
-        model.save_weights(weights_path)
-        print(f"Model weights saved to: {weights_path}")
         
     def _copy_file(self, source_path, export_path):
         """
@@ -342,16 +384,28 @@ class Train:
         
         try:
             shutil.copy2(source_path, destination_path)
-            print(f"File successfully copied from {source_path} to {destination_path}")
+            file_name = os.path.basename(source_path)
+            print(f"Successfully copied {file_name}.")
         except Exception as e:
             print(f"Error copying file: {e}")
+            
+    def _clean_bytes(self, value):
+        if isinstance(value, list):  # Extract from list
+            value = value[0] if len(value) > 0 else ''
+        
+        if isinstance(value, bytes):  # Decode bytes
+            value = value.decode('utf-8')
 
-    @public_method
-    def fit_model(self, model):
+        if isinstance(value, str):  # Remove leading "b'" and trailing "'"
+            value = value.replace("[b'", "").replace("']", "")
+
+        return value
+    
+    def _create_save_dir_and_store(self):
         """
-        Iteratively loads aligned feature and target TFRecord files in batches,
-        ensuring each epoch processes all aligned sets (0,1,2,...) before validation.
-        Supports dynamically specified feature categories.
+        Create the directory to store the iteration metadata using the current
+        time as the unqiue identifier. Store the iterations' config.py and
+        model creation .py file.
         """
         # Create the unique save directory name
         now = datetime.now()
@@ -359,28 +413,97 @@ class Train:
         save_dir = os.path.join(self.iteration_dir, dt_string)
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
-            print("Successfully created the save directory:", save_dir)
+            print(f"Successfully created the save directory with {dt_string} suffix.")
             
         # Copy the config.py and file with model architecture information
         self._copy_file(self.requirements_paths["config"], save_dir)
         self._copy_file(self.requirements_paths["model"], save_dir)
         
-        # Attempt to load class weights if the file exists
-        if os.path.exists(self.weight_dict_path):
-            with open(self.weight_dict_path, 'r') as f:
-                class_weights = json.load(f)
-            # Convert keys from strings to ints
-            class_weights = {int(k): v for k, v in class_weights.items()}
-            print("Successfully loaded class weights.")
-        
-        tfrecord_files = sorted([f for f in os.listdir(self.data_dir) if f.endswith('.tfrecord')])
+        return save_dir
     
-        # Ensure all specified feature categories exist
-        required_categories = set(self.feature_categories.keys())
-        existing_categories = set(f.split('_')[0] for f in tfrecord_files if 'features' in f)
-        missing_categories = required_categories - existing_categories
-        if missing_categories:
-            raise ValueError(f"Missing required feature categories: {missing_categories}")
+    def _load_class_weights(self):
+        """
+        Load class_weights if they exist, return None otherwise.
+        """
+        # Attempt to load class weights if the file exists
+        if self.use_weight_dict:
+            if os.path.exists(self.weight_dict_path):
+                with open(self.weight_dict_path, 'r') as f:
+                    class_weights = json.load(f)
+                # Convert keys from strings to ints
+                class_weights = {int(k): v for k, v in class_weights.items()}
+                print("Successfully loaded class weights.")
+        else:
+            class_weights = None
+    
+    def _val_prediction_data(self, model, val_dataset, full_target_dataset, target_column_names):
+        """
+        Run model.predict on the validation set and return predictions and
+        confidences for export.
+        """
+        # Now, run predictions on this validation chunk.
+        # Since our dataset is a tf.data.Dataset of (features, target),
+        # we use model.predict to get the output probabilities.
+        predictions = model.predict(val_dataset)
+        # Collect actual targets from the dataset.
+        # (We assume that the dataset yields (features, target) tuples.)
+        actual_targets = []
+        extra_target_values = []  # Store extra target column values
+        for full_targets in full_target_dataset:  # Looping through target values
+            target_dict = {
+                col: (
+                    tf.sparse.to_dense(full_targets[col]).numpy().tolist()  # Convert SparseTensor to dense
+                    if isinstance(full_targets[col], tf.sparse.SparseTensor)  # Check if SparseTensor
+                    else full_targets[col].numpy().tolist()
+                ) 
+                for col in target_column_names
+            }
+        
+            # Extract main target
+            actual_targets.extend(target_dict['target'])
+        
+            # Store all extra target values
+            extra_target_values.extend([
+                [target_dict[col][i] for col in target_column_names if col != 'target']
+                for i in range(len(target_dict['target']))
+            ])
+        # Ensure predictions is a NumPy array.
+        predictions = np.array(predictions)
+        # Extract Predicted Categories & Confidence
+        predicted_categories = np.argmax(predictions, axis=1)
+        confidences = np.max(predictions, axis=1)
+        
+        return predicted_categories, actual_targets, confidences, extra_target_values
+        
+    @public_method
+    def fit_model(self, model):
+        """
+        Iteratively loads aligned feature and target TFRecord files in batches,
+        ensuring each epoch processes all aligned sets (0,1,2,...) before validation.
+        Supports dynamically specified feature categories.
+        """
+        save_dir = self._create_save_dir_and_store()
+        class_weights = self._load_class_weights()
+        if self.callback_function:
+            aggregated_callbacks = self._import_function(self.model_modules_path, self.callback_function)
+            if callable(aggregated_callbacks):
+                # Create an instance of AggregatedCallbacks with any parameters you want.
+                aggregated_callbacks = aggregated_callbacks(save_dir=save_dir)
+                if aggregated_callbacks.use_tensorboard:
+                    log_dir = os.path.join(save_dir, "logs", datetime.now().strftime("%Y%m%d-%H%M%S"))
+                    callbacks=[tf.keras.callbacks.TensorBoard(
+                                log_dir=log_dir,
+                                histogram_freq=1,
+                                write_graph=False,
+                                write_images=True,
+                                update_freq='epoch',
+                                profile_batch=0)]
+                else:
+                    callbacks=[]
+            else:
+                raise TypeError("callback function is not callable")
+        else:
+            aggregated_callbacks = None
     
         for epoch in range(self.epochs):
             print(f"\nEpoch {epoch + 1}/{self.epochs}")
@@ -389,6 +512,10 @@ class Train:
             train_loss_sum = 0.0
             train_acc_sum = 0.0
             num_train_batches = 0
+            
+            # -------------------------------
+            # Training Phase: Process each training chunk.
+            # -------------------------------
     
             # Training Phase (ensure all feature sets are loaded together)
             train_groups = {category: self._group_files_by_number(category, 'train') 
@@ -409,13 +536,16 @@ class Train:
                 print(f"Training on set {num}")
     
                 # Load dataset with all feature sets
-                train_dataset = self._load_tfrecord_dataset(feature_files, target_files)
+                train_dataset, full_target_dataset, target_column_names = (
+                    self._load_tfrecord_dataset(feature_files, target_files))
     
                 # Train model with all feature inputs; include class_weight if available
                 if class_weights is not None:
-                    history = model.fit(train_dataset, epochs=1, verbose=1, class_weight=class_weights)
+                    history = model.fit(train_dataset, epochs=1, verbose=1, 
+                                        class_weight=class_weights, callbacks=callbacks)
                 else:
-                    history = model.fit(train_dataset, epochs=1, verbose=1)
+                    history = model.fit(train_dataset, epochs=1, verbose=1, 
+                                        callbacks=callbacks)
                     
                 # Assuming 'loss' and 'accuracy' are tracked metrics
                 # (Update the keys if your metric names differ.)
@@ -432,15 +562,15 @@ class Train:
             avg_train_loss = train_loss_sum / num_train_batches if num_train_batches else 0
             avg_train_acc = train_acc_sum / num_train_batches if num_train_batches else 0
     
+            # -------------------------------
+            # Validation Phase: Process each validation chunk.
+            # -------------------------------
             # Initialize accumulators for validation metrics.
             val_loss_sum = 0.0
             val_acc_sum = 0.0
             num_val_batches = 0
-            
-            # We also want to accumulate per-sample predictions for the CSV.
             pred_rows = []  # Each element: [epoch, predicted_category, actual_target, prediction_confidence]
                 
-            # Validation Phase
             val_groups = {category: self._group_files_by_number(category, 'val') 
                           for category in self.feature_categories}
     
@@ -454,64 +584,81 @@ class Train:
     
                 print(f"Validating on set {num}")
     
-                val_dataset = self._load_tfrecord_dataset(feature_files, target_files)
+                val_dataset, full_target_dataset, target_column_names = self._load_tfrecord_dataset(
+                    feature_files, target_files)
                 results = model.evaluate(val_dataset, verbose=1)
                 # Typically, results[0] is loss and results[1] is accuracy.
                 val_loss_sum += results[0]
                 if len(results) > 1:
                     val_acc_sum += results[1]
                 num_val_batches += 1
-                
-                # Now, run predictions on this validation chunk.
-                # Since our dataset is a tf.data.Dataset of (features, target),
-                # we use model.predict to get the output probabilities.
-                predictions = model.predict(val_dataset)
-                # Collect actual targets from the dataset.
-                # (We assume that the dataset yields (features, target) tuples.)
-                actual_targets = []
-                for _, t in val_dataset:
-                    # Flatten in case targets come with extra dimensions.
-                    actual_targets.extend(t.numpy().flatten().tolist())
-                # Ensure predictions is a NumPy array.
-                predictions = np.array(predictions)
-                # For each sample, the predicted category is the argmax and the confidence is the max probability.
-                predicted_categories = np.argmax(predictions, axis=1)
-                confidences = np.max(predictions, axis=1)
-                # Add one row per sample.
-                for pred, actual, conf in zip(predicted_categories, actual_targets, confidences):
-                    pred_rows.append([epoch + 1, pred, actual, conf])
-    
+            
+                # Run model.predict on validation set
+                predicted_categories, actual_targets, confidences, extra_target_values = (
+                    self._val_prediction_data(
+                    model, val_dataset, full_target_dataset, target_column_names))
+            
+                # Prepare CSV Rows
+                for i, (pred, actual, conf) in enumerate(zip(predicted_categories, actual_targets, confidences)):
+                    pred_rows.append([epoch + 1, pred, actual, conf] + extra_target_values[i])
+            
                 del val_dataset
                 gc.collect()
-                
-            # Compute average validation metrics for this epoch
+            
+            # Compute Average Validation Metrics
             avg_val_loss = val_loss_sum / num_val_batches if num_val_batches else 0
             avg_val_acc = val_acc_sum / num_val_batches if num_val_batches else 0
-    
-            # Construct a filename that includes these metrics.
-            # For example: "epoch1_trainLoss_0.1234_trainAcc_0.9876_valLoss_0.2345_valAcc_0.9765.h5"
+            
+            # Save Model
             model_filename = (
-                f"epoch{epoch+1}_"
+                f"epoch{epoch}_"
                 f"trainLoss_{avg_train_loss:.4f}_"
                 f"trainAcc_{avg_train_acc:.4f}_"
                 f"valLoss_{avg_val_loss:.4f}_"
                 f"valAcc_{avg_val_acc:.4f}.h5"
             )
             model_path = os.path.join(save_dir, model_filename)
-            model.save(model_path)
             model.save_weights(model_path)
             print(f"Saved model for epoch {epoch+1} at: {model_path}")
             
-            # Append per-sample predictions to the predictions CSV.
+            # Append Predictions & Target Columns to CSV
             predictions_csv_path = os.path.join(save_dir, f"{epoch}_predictions.csv")
-            with open(predictions_csv_path, mode="a", newline="") as csvfile:
-                writer = csv.writer(csvfile)
-                # Write header row for sample-level predictions
-                writer.writerow(["epoch", "predicted_category", "actual_target", "prediction_confidence"])
-                for row in pred_rows:
-                    writer.writerow(row)
+            
+            # CSV Header
+            csv_headers = ["epoch", "predicted_category", "actual_target", "prediction_confidence"] + [
+                col for col in target_column_names if col != 'target'
+            ]
+            
+            df_predictions = pd.DataFrame(pred_rows, columns=csv_headers)
+
+            # Apply cleaning to all DataFrame cells
+            df_predictions = df_predictions.applymap(self._clean_bytes)
+            
+            # Save DataFrame to CSV
+            predictions_csv_path = os.path.join(save_dir, f"{epoch}_predictions.csv")
+            df_predictions.to_csv(predictions_csv_path, mode="a", index=False, 
+                                  header=not os.path.exists(predictions_csv_path))
+            
             print(f"Appended predictions for epoch {epoch+1} to CSV file: {predictions_csv_path}")
             
+            # -------------------------------
+            # Aggregate metrics and update aggregated callbacks.
+            # -------------------------------
+            if aggregated_callbacks:
+                aggregated_logs = {
+                'train_loss': avg_train_loss,
+                'train_accuracy': avg_train_acc,
+                'val_loss': avg_val_loss,
+                'val_accuracy': avg_val_acc
+                }
+                # Call the custom aggregated callbacks with overall epoch metrics.
+                aggregated_callbacks.on_aggregated_epoch_end(epoch, aggregated_logs, model)
+                
+                # Optionally, check if early stopping was triggered.
+                if model.stop_training:
+                    print("Stopping further training due to early stopping.")
+                    break
+
     @public_method
     def train_models(self):
         """

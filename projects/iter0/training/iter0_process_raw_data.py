@@ -158,9 +158,25 @@ def target_engineering(df):
     Returns:
         pd.DataFrame: DataFrame with new targets.
         """
-    category_to_index = {'loss': 0, 'buy': 1, 'sell': 2, 'wait': 0}    
+    # Original encoding, uncomment if engineering data from original target table
+    #category_to_index = {'loss': 0, 'buy': 1, 'sell': 2, 'wait': 0}    
+    #df['target'] = df['target'].map(category_to_index)
     
-    df['target'] = df['target'].map(category_to_index)
+    df['date'] = pd.to_datetime(df['date'])
+    date_boundary = pd.to_datetime('2022-11-30')
+    df['hour'] = df['date'].dt.hour
+    condition_before_date = (df['date'] < date_boundary) & (df['hour'].isin([20, 21, 22]))
+    condition_after_date = (df['date'] > date_boundary) & (df['hour'].isin([8, 9, 10]))
+    df['hours_passed'] = df['hours_passed'].fillna(0).astype(float)
+    condition_hours_passed = df['hours_passed'] >= 6
+    
+    df['target'] = np.where(
+        condition_before_date | condition_after_date | condition_hours_passed,
+        0,
+        df['target']
+        )
+    
+    df.drop(['hour'], axis=1, inplace=True)
     
     return df
 

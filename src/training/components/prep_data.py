@@ -413,7 +413,7 @@ class PrepData:
     @public_method
     def save_batches(self):
         """
-        Split, type features and targets, scale and reshape features, and
+        Split, type features and targets, and scale features, and
         save completely prepped data in batches to TFRecord files for efficient,
         iterative loading in model training.
     
@@ -424,28 +424,35 @@ class PrepData:
           3. Find the set of chunk_keys from the table that has the maximum length.
           4. Process each table using that global set of chunk_keys.
         """
+        # Step 1: Collect chunk keys from all tables across all keys
+        chunk_keys_by_table = {}
+    
         for key in self.prep_and_save_dict.keys():
             db_path = self.env_loader.get(self.prep_and_save_dict[key][0])
             table_list = list(self.prep_and_save_dict[key][1].keys())
-            
-            # Step 1: Compute chunk keys for each table and store in a dict.
-            chunk_keys_by_table = {}
+    
             for table in table_list:
-                print(f"Determining chunk keys for table: {table}...")
-                query = f"SELECT * FROM {table}"
-                chunk_keys = self.ltd.chunk_keys(
-                    mode='manual',
-                    db_path=db_path,
-                    query=query
-                )
-                chunk_keys_by_table[table] = chunk_keys
-                
-            # Step 2: Find the table with the maximum number of chunk keys.
-            # This is our global chunk key set.
-            max_table = max(chunk_keys_by_table, key=lambda t: len(chunk_keys_by_table[t]))
-            global_chunk_keys = chunk_keys_by_table[max_table]
-            print(f"Using chunk keys from table '{max_table}' with {len(global_chunk_keys)} chunks for alignment.")
-            
+                if table not in chunk_keys_by_table:
+                    print(f"Determining chunk keys for table: {table}...")
+                    query = f"SELECT * FROM {table}"
+                    chunk_keys = self.ltd.chunk_keys(
+                        mode='manual',
+                        db_path=db_path,
+                        query=query
+                    )
+                    chunk_keys_by_table[table] = chunk_keys
+    
+        # Step 2: Find the single max_table across all keys
+        max_table = max(chunk_keys_by_table, key=lambda t: len(chunk_keys_by_table[t]))
+        global_chunk_keys = chunk_keys_by_table[max_table]
+    
+        print(f"Using global chunk keys from table '{max_table}' with {len(global_chunk_keys)} chunks for alignment.")
+
+        # Step 3: Process all tables using the global chunk keys
+        for key in self.prep_and_save_dict.keys():
+            db_path = self.env_loader.get(self.prep_and_save_dict[key][0])
+            table_list = list(self.prep_and_save_dict[key][1].keys())
+    
             for table in table_list:
                 print(f"Beginning to process {table}...")
                 query = f"""SELECT * FROM {table}"""
@@ -471,8 +478,9 @@ class PrepData:
                         )
                     
                     # Remove primary keys before scaling
-                    data = data.drop(columns=self.primary_key, 
-                                             errors='ignore')
+                    if not self.prep_and_save_dict[key][1][table].get('keep_primary_key'):
+                        data = data.drop(columns=self.primary_key, 
+                                                 errors='ignore')
                     
                     # Convert text to appropriate types'
                     if idx == 0:

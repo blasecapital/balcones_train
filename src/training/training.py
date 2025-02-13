@@ -76,7 +76,7 @@ def training(clean=False, prep=False, train=True):
         validate_data=False
         
         if engineer:
-            prep.engineer(mode='feature')
+            prep.engineer(mode='target')
         if scale:
             prep.scale()
         if prep_and_save:

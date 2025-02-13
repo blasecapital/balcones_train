@@ -121,12 +121,10 @@ config = {
             "CLEAN_FEATURE_DATABASE",
             {
                 'hourly_features': {
-                    'scaler': True,
-                    'reshape': [(-1, 48, 4)]
+                    'scaler': True
                     },
                 'dense_features': {
-                    'scaler': False,
-                    'reshape': []
+                    'scaler': False
                     }
                 }
             ),
@@ -135,26 +133,18 @@ config = {
             {
                 'targets': {
                     'scaler': False,
-                    'reshape': False,
-                    'weights_dict': 'target'
+                    'weights_dict': 'target',
+                    'keep_primary_key': True
                     }
                 }
             )
         },
     "weight_dict_save_path": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
                               r"\deep_learning\projects\iter0\training"
-                              r"\wightes_dict\target_weights_dict.json"), 
-    
-    # (target column name, associated dataframe)
-    "define_targets": [('target', 'model1')],
-    # (dict mapping categories to their codes, associated dataframe)
-    "category_index": [({'loss': 0, 'buy': 1, 'sell': 2, 'wait': 0}, 'model1')],
-    
-    # (samples, timesteps, features, dataframe to apply to (df_key))
-    # Example (-1, 48, 4, 'model1')
-    "reshape": [(-1, 48, 4, 'model1')],
-    
+                              r"\weights_dict\target_weights_dict.json"), 
+            
     # Args for training
+    # Reshape (number of windows (48 hours of ohlc=48), size of windows (ohlc=4))
     "feature_categories": 
         {
             'hourly': {
@@ -171,39 +161,41 @@ config = {
                            r'\projects\iter0\training'
                            r'\iter0_training.py'),
     "model_function": 'create_model',
+    "callback_function": 'AggregateCallbacks',
     "model_args": {
         'n_hours_back_hourly': 192 // 4, # len(features) // len(window)
         'n_ohlc_features': 4, # window
-        'l2_strength': 0.00, 
+        'l2_strength': 0.0, 
         'dropout_rate': 0.0,
         'n_dense_features': 47, 
         'activation': 'relu', 
         'n_targets': 3, 
-        'output_activation': 'softmax'
+        'output_activation': 'softmax',
+        'initial_bias': False
         },
-    "initial_bias_path": (),
+    
+    # Use for both initial_bias and class_weights
     "weight_dict_path": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
                          r"\deep_learning\projects\iter0\training"
-                         r"\wightes_dict\target_weights_dict.json"), 
+                         r"\weights_dict\target_weights_dict.json"), 
     "data_dir": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt'
                  r'\deep_learning\projects\iter0\training\prepped_data'),    
-    "custom_loss": {"custom_loss_path": (r'C:\Users\brand\OneDrive'
-                                         r'\Blase Capital Mgmt\deep_learning'
-                                         r'\projects\iter0\training'
-                                         r'\iter0_training.py'),
-                    "module_name": "custom_loss"},
+    # "custom_loss": {"custom_loss_path": (r'C:\Users\brand\OneDrive'
+    #                                      r'\Blase Capital Mgmt\deep_learning'
+    #                                      r'\projects\iter0\training'
+    #                                      r'\iter0_training.py'),
+    #                 "module_name": "custom_loss"},
+    "custom_loss": {},
+    "use_weight_dict": True,
+    # The layer is the key and the loss is the item
     "loss": {"output_layer": "sparse_categorical_crossentropy"},
     "metrics": ["accuracy"],
-    "learning_rate_schedule": [],
     "optimizer": {"type": "adam", "learning_rate": 0.0001, "clipvalue": 1.0},
     "epochs": 50,
     "batch_size": 512,
-    "early_stopping": '',
-    "checkpoint": '',
     "iteration_dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
                       r"\deep_learning\projects\iter0\training\iterations"),
-    # Specify the file paths of the iteration config.py and model architecture
-    # file
+    # Specify the file paths of the iteration config.py and model architecture file
     "requirements_paths": {
         "config": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
                    r"\projects\iter0\training\config.py"),
