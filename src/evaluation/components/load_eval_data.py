@@ -7,7 +7,6 @@ import importlib.util
 import os
 
 from utils import EnvLoader, public_method
-from config import config
 
 
 class LoadEvalData:

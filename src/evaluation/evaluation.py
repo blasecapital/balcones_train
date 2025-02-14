@@ -1,7 +1,7 @@
 # evaluation.py
 
 
-from components import LoadEvalData, ProcessEvalData, EvalInference
+from components import LoadEvalData, ProcessEvalData, Eval
 
 
 def evaluation():
@@ -17,20 +17,8 @@ def evaluation():
         - original create model function
         - evaluation config (export, which slices to inference, custom modules like decoding predictions)
     """
-    # Load data
-    led = LoadEvalData('model1')
-    raw_data = led.load_data()
-    
-    # Preprocess data
-    ped = ProcessEvalData(raw_data, 'model1')
-    training_data = ped.process_raw_data()
-        
-    # Inference and save
-    inf = EvalInference(training_data, 'model1')
-    inf.eval_inference()
-    
-    # Calculate and report metrics
-    
+    e = Eval()
+    e.backtest_results()
     
 if __name__ == "__main__":
     evaluation()

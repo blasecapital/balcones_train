@@ -95,6 +95,7 @@ class CustomEarlyStopping(tf.keras.callbacks.Callback):
                 print(f"[EarlyStopping] Early stopping triggered at epoch {epoch+1}.")
                 self.model.stop_training = True
 
+
 class CustomReduceLROnPlateau(tf.keras.callbacks.Callback):
     def __init__(self, monitor='val_loss', factor=0.8, patience=3, min_lr=1e-6):
         super().__init__()
@@ -121,6 +122,7 @@ class CustomReduceLROnPlateau(tf.keras.callbacks.Callback):
                 tf.keras.backend.set_value(self.model.optimizer.lr, new_lr)
                 print(f"[ReduceLROnPlateau] Epoch {epoch+1}: LR reduced from {old_lr:.6f} to {new_lr:.6f}.")
                 self.wait = 0
+
 
 class CustomModelCheckpoint(tf.keras.callbacks.Callback):
     def __init__(self, filepath, monitor='val_loss'):

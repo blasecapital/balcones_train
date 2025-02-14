@@ -3,7 +3,7 @@
 
 from .load_eval_data import LoadEvalData
 from .process_eval_data import ProcessEvalData
-from .eval_inference import EvalInference
+from .evaluate import Eval
 
 
 __all__ = ["LoadEvalData", "ProcessEvalData", "EvalInference"]

@@ -304,25 +304,6 @@ class Train:
     
         return feature_tuple_dataset, full_target_dataset, list(target_metadata.keys())
 
-    def _match_feature_target_files(self, feature_category, dataset_type):
-        """
-        Match feature and target files based on numbering for proper alignment.
-        """
-        # List all files
-        tfrecord_files = sorted([f for f in os.listdir(self.data_dir) if f.endswith('.tfrecord')])
-
-        # Filter for feature and target files of the correct category and dataset type (train/val/test)
-        feature_files = sorted([os.path.join(self.data_dir, f) for f in tfrecord_files 
-                                if f.startswith(feature_category) and dataset_type in f])
-        target_files = sorted([os.path.join(self.data_dir, f) for f in tfrecord_files 
-                               if f.startswith("targets") and dataset_type in f])
-
-        # Ensure the number of feature and target files match
-        if len(feature_files) != len(target_files):
-            raise ValueError(f"Mismatch between feature ({len(feature_files)}) and target ({len(target_files)}) files for {dataset_type}.")
-
-        return feature_files, target_files
-
     def _group_files_by_number(self, feature_category, dataset_type):
         """
         Groups feature and target files by their number (0,1,2,...) for training order consistency.
@@ -424,17 +405,26 @@ class Train:
     def _load_class_weights(self):
         """
         Load class_weights if they exist, return None otherwise.
+        Converts to TensorFlow tensor for efficient lookup.
         """
-        # Attempt to load class weights if the file exists
-        if self.use_weight_dict:
-            if os.path.exists(self.weight_dict_path):
-                with open(self.weight_dict_path, 'r') as f:
-                    class_weights = json.load(f)
-                # Convert keys from strings to ints
-                class_weights = {int(k): v for k, v in class_weights.items()}
-                print("Successfully loaded class weights.")
-        else:
-            class_weights = None
+        if self.use_weight_dict and os.path.exists(self.weight_dict_path):
+            with open(self.weight_dict_path, 'r') as f:
+                class_weights = json.load(f)
+            class_weights = {int(k): v for k, v in class_weights.items()}  # Convert keys to ints
+            print("Successfully loaded class weights.")
+    
+            # Convert to TensorFlow tensor for faster access
+            class_weights_tensor = tf.constant([class_weights[i] for i in sorted(class_weights)], dtype=tf.float32)
+            return class_weights_tensor
+    
+        return None  # No class weights available
+    
+    def _add_sample_weights(self, features, target, class_weights_tensor):
+        """
+        Assigns a sample weight based on class_weights_tensor lookup.
+        """
+        sample_weight = tf.gather(class_weights_tensor, target)  # Lookup weight using target class
+        return features, target, sample_weight
     
     def _val_prediction_data(self, model, val_dataset, full_target_dataset, target_column_names):
         """
@@ -538,13 +528,14 @@ class Train:
                 # Load dataset with all feature sets
                 train_dataset, full_target_dataset, target_column_names = (
                     self._load_tfrecord_dataset(feature_files, target_files))
+                
+                # Add class_weights as a tensor
+                if class_weights is not None:
+                    train_dataset = train_dataset.map(
+                        lambda x, y: self._add_sample_weights(x, y, class_weights))
     
                 # Train model with all feature inputs; include class_weight if available
-                if class_weights is not None:
-                    history = model.fit(train_dataset, epochs=1, verbose=1, 
-                                        class_weight=class_weights, callbacks=callbacks)
-                else:
-                    history = model.fit(train_dataset, epochs=1, verbose=1, 
+                history = model.fit(train_dataset, epochs=1, verbose=1, 
                                         callbacks=callbacks)
                     
                 # Assuming 'loss' and 'accuracy' are tracked metrics
