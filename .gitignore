@@ -8,3 +8,4 @@ projects/**/training/bad_keys/*.txt
 projects/**/training/scalers/*.pkl
 projects/**/training/prepped_data/*.tfrecord
 projects/**/training/iterations
+projects/**/evaluation/predictions

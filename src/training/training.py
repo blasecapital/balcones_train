@@ -72,8 +72,8 @@ def training(clean=False, prep=False, train=True):
         # Which prep processes do you want to run
         engineer=False
         scale=False
-        prep_and_save=True
-        validate_data=False
+        prep_and_save=False
+        validate_data=True
         
         if engineer:
             prep.engineer(mode='target')

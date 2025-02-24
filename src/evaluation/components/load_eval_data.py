@@ -15,7 +15,6 @@ class LoadEvalData:
         Initialize the LoadEvalData class with configuration and utility modules.
         """
         self.model_name = model_name
-        self.eval_dict = config
         self.original_config = self._load_original_config()
         self.env_loader = EnvLoader()
         

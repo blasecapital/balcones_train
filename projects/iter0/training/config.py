@@ -99,7 +99,6 @@ config = {
     #   Items:
     #       1) .env database path reference
     #       2) List of table names to scale
-    #       3) Path to save scale files
     "feature_scaling": {
         "iter0_features" : (
             "CLEAN_FEATURE_DATABASE",
@@ -121,10 +120,15 @@ config = {
             "CLEAN_FEATURE_DATABASE",
             {
                 'hourly_features': {
-                    'scaler': True
+                    # observed ohlc may be skewed relative to one another in a 
+                    # window (ie low originally being higher than close but 
+                    # then altered after scaling)
+                    'scaler': True, 
+                    'keep_primary_key': False
                     },
                 'dense_features': {
-                    'scaler': False
+                    'scaler': False,
+                    'keep_primary_key': False
                     }
                 }
             ),
@@ -155,7 +159,7 @@ config = {
                 'reshape': False,
                 'shape': None
                 }
-            },
+        },
     "model_modules_path": (r'C:\Users\brand\OneDrive'
                            r'\Blase Capital Mgmt\deep_learning'
                            r'\projects\iter0\training'
@@ -165,34 +169,34 @@ config = {
     "model_args": {
         'n_hours_back_hourly': 192 // 4, # len(features) // len(window)
         'n_ohlc_features': 4, # window
-        'l2_strength': 0.0, 
+        'l2_strength': 0.00, 
         'dropout_rate': 0.0,
         'n_dense_features': 47, 
         'activation': 'relu', 
         'n_targets': 3, 
         'output_activation': 'softmax',
-        'initial_bias': False
+        'initial_bias': True
         },
     
     # Use for both initial_bias and class_weights
     "weight_dict_path": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
                          r"\deep_learning\projects\iter0\training"
-                         r"\weights_dict\target_weights_dict.json"), 
+                         r"\weights_dict\target_weights_dict - Copy.json"), 
     "data_dir": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt'
                  r'\deep_learning\projects\iter0\training\prepped_data'),    
-    # "custom_loss": {"custom_loss_path": (r'C:\Users\brand\OneDrive'
-    #                                      r'\Blase Capital Mgmt\deep_learning'
-    #                                      r'\projects\iter0\training'
-    #                                      r'\iter0_training.py'),
-    #                 "module_name": "custom_loss"},
-    "custom_loss": {},
+    "custom_loss": {"custom_loss_path": (r'C:\Users\brand\OneDrive'
+                                         r'\Blase Capital Mgmt\deep_learning'
+                                         r'\projects\iter0\training'
+                                         r'\iter0_training.py'),
+                    "module_name": "custom_loss"},
+    #"custom_loss": {},
     "use_weight_dict": True,
     # The layer is the key and the loss is the item
     "loss": {"output_layer": "sparse_categorical_crossentropy"},
     "metrics": ["accuracy"],
-    "optimizer": {"type": "adam", "learning_rate": 0.0001, "clipvalue": 1.0},
-    "epochs": 50,
-    "batch_size": 512,
+    "optimizer": {"type": "adam", "learning_rate": 0.001, "clipvalue": 1.0},
+    "epochs": 100,
+    "batch_size": 1024,
     "iteration_dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
                       r"\deep_learning\projects\iter0\training\iterations"),
     # Specify the file paths of the iteration config.py and model architecture file

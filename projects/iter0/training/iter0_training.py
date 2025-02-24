@@ -10,69 +10,99 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.regularizers import l2
 import tensorflow as tf
 import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+from io import BytesIO
 
 
-def custom_loss(y_true, y_pred, max_loss=5):
-    minority_class_indices=[1,2]
-    penalty_weight = 0.005
+def custom_loss(y_true, y_pred, max_loss=5, 
+                penalty_weight=0.25, 
+                penalty_weight_distribution=0.75,
+                penalty_weight_minority_balance=0.25):
+    """
+    Custom loss function that combines sparse categorical cross-entropy with three penalties:
+      1. A penalty for false positives on the minority classes (encoded as 1 and 2).
+      2. A **per-sample** penalty for deviation of the predicted probability from the true distribution.
+      3. A penalty for imbalance between the predicted probabilities for the minority classes.
     
-    # Ensure y_pred is float32
-    y_pred = tf.cast(y_pred, tf.float32)
-
-    # Avoid log(0) by adding a small constant (epsilon)
+    Args:
+        y_true: Tensor of true labels (sparse integers) with shape (batch_size, 1) or (batch_size,).
+        y_pred: Tensor of predicted probabilities (softmax output) with shape (batch_size, num_classes).
+        max_loss: Maximum loss value for clipping.
+        penalty_weight: Weight for the false positive penalty on minority classes.
+        penalty_weight_distribution: Weight for the per-sample distribution penalty.
+        penalty_weight_minority_balance: Weight for the minority balance penalty.
+        
+    Returns:
+        A tensor representing the loss for each sample.
+    """
+    # Minority classes are encoded as 1 and 2.
+    minority_classes = [1, 2]
     epsilon = tf.keras.backend.epsilon()
+
+    # Ensure y_pred is float32 and clip predictions to avoid log(0)
+    y_pred = tf.cast(y_pred, tf.float32)
     y_pred = tf.clip_by_value(y_pred, epsilon, 1.0 - epsilon)
 
-    # Calculate categorical cross-entropy loss
+    # Calculate sparse categorical cross-entropy loss.
     ce_loss = tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred)
-
-    # Clip the categorical cross-entropy loss to avoid extreme values
     ce_loss = tf.clip_by_value(ce_loss, 0.00001, max_loss)
 
-    # Identify predicted and true classes
-    y_pred_classes = tf.argmax(y_pred, axis=1)
-    y_true_classes = tf.argmax(y_true, axis=1)
+    # Determine predicted classes using argmax
+    y_pred_classes = tf.argmax(y_pred, axis=1, output_type=tf.int32)
+    y_true_classes = tf.squeeze(y_true, axis=-1) if len(y_true.shape) > 1 else tf.cast(y_true, tf.int32)
 
-    # Identify true positives and false positives for the minority class
+    # --- Minority Class Penalty ---
     is_minority_class_pred = tf.reduce_any(
-        tf.equal(tf.expand_dims(y_pred_classes, axis=-1), minority_class_indices), axis=-1)
-    is_minority_class_true = tf.reduce_any(
-        tf.equal(tf.expand_dims(y_true_classes, axis=-1), minority_class_indices), axis=-1)
-
-    true_positives = tf.logical_and(tf.equal(y_true_classes, y_pred_classes), is_minority_class_true)
-    false_positives = tf.logical_and(tf.not_equal(y_true_classes, y_pred_classes), is_minority_class_pred)
-
-    # Calculate precision for the minority class
-    true_positive_count = tf.reduce_sum(tf.cast(true_positives, tf.float32))
-    false_positive_count = tf.reduce_sum(tf.cast(false_positives, tf.float32))
-
-    # Ensure no division by zero
-    precision = tf.where(
-        tf.equal(true_positive_count + false_positive_count, 0),
-        0.0,
-        true_positive_count / (true_positive_count + false_positive_count + epsilon)
+        tf.equal(tf.expand_dims(y_pred_classes, axis=-1), minority_classes),
+        axis=-1
     )
+    is_minority_class_true = tf.reduce_any(
+        tf.equal(tf.expand_dims(y_true_classes, axis=-1), minority_classes),
+        axis=-1
+    )
+    false_positive_mask = tf.logical_and(is_minority_class_pred, tf.logical_not(is_minority_class_true))
+    penalty_minority = tf.cast(false_positive_mask, tf.float32) * penalty_weight
+    penalty_minority = tf.clip_by_value(penalty_minority, 0, max_loss)
 
-    # Compute the penalty based on precision
-    precision_penalty = (1.0 - precision) * penalty_weight
+    # --- **Per-Sample Distribution Penalty** ---
+    num_classes = tf.shape(y_pred)[1]
+    
+    # Compute the true class distribution for the batch
+    y_true_one_hot = tf.one_hot(tf.cast(y_true_classes, tf.int32), depth=num_classes)
+    batch_true_dist = tf.reduce_mean(y_true_one_hot, axis=0)  # (num_classes,)
 
-    # Apply the penalty only to false positives of the minority class
-    precision_penalty_per_sample = tf.where(false_positives, precision_penalty, 0.0)
+    # Gather the expected frequency of each sample’s true class
+    y_true_class_freq = tf.gather(batch_true_dist, y_true_classes)  # Shape (batch_size,)
+    
+    # Compute the predicted probability of the true class for each sample
+    y_pred_true_class_prob = tf.reduce_sum(y_pred * y_true_one_hot, axis=1)  # Shape (batch_size,)
+    
+    # **Apply the penalty only if the prediction is incorrect**
+    y_true_classes = tf.cast(y_true_classes, tf.int32)
+    incorrect_mask = tf.not_equal(y_pred_classes, y_true_classes)  # Boolean mask for misclassified samples
 
-    # Clip the precision penalty to avoid extreme values
-    precision_penalty_per_sample = tf.clip_by_value(precision_penalty_per_sample, 0, max_loss)
+    # Compute per-sample penalty: If y_pred_true_class_prob > y_true_class_freq, penalize
+    overpredicted_mask = tf.logical_and(
+        y_pred_true_class_prob > y_true_class_freq, incorrect_mask
+    )  # Only penalize overconfident misclassified samples
+    per_sample_distribution_penalty = tf.abs(y_pred_true_class_prob - y_true_class_freq) * tf.cast(overpredicted_mask, tf.float32)
 
-    # Calculate the total loss per sample
-    total_loss_per_sample = ce_loss + precision_penalty_per_sample
+    # --- Minority Balance Penalty ---
+    batch_pred_dist = tf.reduce_mean(y_pred, axis=0)
+    minority_pred_probs = tf.stack([batch_pred_dist[i] for i in minority_classes])
+    mean_minority_pred = tf.reduce_mean(minority_pred_probs)
+    minority_balance_penalty = tf.reduce_mean(tf.abs(minority_pred_probs - mean_minority_pred))
 
-    # Ensure numerical stability in the total loss
-    total_loss_per_sample = tf.clip_by_value(total_loss_per_sample, 0, max_loss)
-
-    return total_loss_per_sample
+    # --- Total Loss ---
+    total_loss = ce_loss + penalty_minority + per_sample_distribution_penalty * penalty_weight_distribution + minority_balance_penalty * penalty_weight_minority_balance
+    total_loss = tf.clip_by_value(total_loss, 0, max_loss)
+    
+    return total_loss
 
 
 class CustomEarlyStopping(tf.keras.callbacks.Callback):
-    def __init__(self, monitor='val_loss', patience=2):
+    def __init__(self, monitor='val_loss', patience=10):
         super().__init__()
         self.monitor = monitor
         self.patience = patience
@@ -97,7 +127,7 @@ class CustomEarlyStopping(tf.keras.callbacks.Callback):
 
 
 class CustomReduceLROnPlateau(tf.keras.callbacks.Callback):
-    def __init__(self, monitor='val_loss', factor=0.8, patience=3, min_lr=1e-6):
+    def __init__(self, monitor='val_loss', factor=0.5, patience=3, min_lr=1e-6):
         super().__init__()
         self.monitor = monitor
         self.factor = factor
@@ -106,21 +136,33 @@ class CustomReduceLROnPlateau(tf.keras.callbacks.Callback):
         self.best = np.Inf
         self.wait = 0
 
-    def on_aggregated_epoch_end(self, epoch, logs):
+    def on_aggregated_epoch_end(self, epoch, logs=None):
+        if logs is None:
+            logs = {}
+
         current = logs.get(self.monitor)
         if current is None:
             print(f"[ReduceLROnPlateau] '{self.monitor}' not found in logs.")
             return
+
         if current < self.best:
             self.best = current
             self.wait = 0
         else:
             self.wait += 1
             if self.wait >= self.patience:
+                # Get current learning rate
                 old_lr = float(tf.keras.backend.get_value(self.model.optimizer.lr))
+                
+                # Compute the new learning rate based on the last updated learning rate
                 new_lr = max(old_lr * self.factor, self.min_lr)
+
+                # Set new learning rate
                 tf.keras.backend.set_value(self.model.optimizer.lr, new_lr)
-                print(f"[ReduceLROnPlateau] Epoch {epoch+1}: LR reduced from {old_lr:.6f} to {new_lr:.6f}.")
+
+                print(f"[ReduceLROnPlateau] Epoch {epoch+1}: LR reduced from {old_lr:.6e} to {new_lr:.6e}.")
+                
+                # Reset patience counter
                 self.wait = 0
 
 
@@ -141,14 +183,79 @@ class CustomModelCheckpoint(tf.keras.callbacks.Callback):
             self.model.save_weights(self.filepath)
             print(f"[ModelCheckpoint] Epoch {epoch+1}: Checkpoint saved to {self.filepath} with {self.monitor} = {current:.4f}.")
 
+
+class ConfusionMatrixCallback:
+    def __init__(self, log_dir, class_names):
+        self.log_dir = log_dir
+        self.class_names = class_names
+        self.file_writer = tf.summary.create_file_writer(os.path.join(log_dir, "confusion_matrix"))
+
+    def log_conf_matrix(self, epoch, all_preds, all_labels):
+        cm = confusion_matrix(all_labels, all_preds, labels=np.arange(len(self.class_names)))
+        cm_image = self._plot_confusion_matrix(cm)
+        with self.file_writer.as_default():
+            tf.summary.image("Confusion Matrix", cm_image, step=epoch)
+        print(f"[TensorBoard] Confusion Matrix logged for epoch {epoch+1}.")
+        
+    def plot_to_image(self, figure):
+        # Save the plot to a PNG in memory.
+        buf = BytesIO()
+        plt.savefig(buf, format='png')
+        # Closing the figure prevents it from being displayed directly inside
+        # the notebook.
+        plt.close(figure)
+        buf.seek(0)
+        # Convert PNG buffer to TF image
+        image = tf.image.decode_png(buf.getvalue(), channels=4)
+        # Add the batch dimension
+        image = tf.expand_dims(image, 0)
+        return image
+
+    def _plot_confusion_matrix(self, cm):
+        size = len(self.class_names)
+        figure = plt.figure(figsize=(size, size))
+        plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+        plt.title("Confusion Matrix")
+        
+        indices = np.arange(len(self.class_names))       
+        plt.xticks(indices, self.class_names)
+        plt.yticks(indices, self.class_names)
+        
+        # Normalize Confusion Matrix
+        cm = np.around(
+            cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=3
+            )
+        
+        # Use the "Blues" colormap to determine the background color of each cell.
+        cmap = plt.get_cmap("Blues")
+        for i in range(size):
+            for j in range(size):
+                cell_value = cm[i, j]
+                rgba = cmap(cell_value)
+                # Compute luminance using a standard formula.
+                luminance = 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]
+                # Use white text if the cell is dark, black otherwise.
+                color = "white" if luminance < 0.5 else "black"
+                plt.text(i, j, cell_value, horizontalalignment="center", color=color)
+        
+        plt.tight_layout()
+        plt.xlabel("Predicted Label")
+        plt.ylabel("True Label")
+        
+        # Convert the figure to a TensorFlow image.
+        cm_image = self.plot_to_image(figure)
+        return cm_image
+        
+
 # --------------------------
 # AggregateCallbacks: container for all aggregated callbacks
 # --------------------------
 
 class AggregateCallbacks:
-    def __init__(self, monitor_metric='val_loss', patience=2, save_dir=None,
-                 use_early_stopping=True, use_reduce_lr=True, use_model_checkpoint=True,
-                 use_tensorboard=True, use_csv_logger=True):
+    def __init__(self, monitor_metric='val_loss', patience=10, save_dir=None,
+                 use_early_stopping=True, use_reduce_lr=True, use_model_checkpoint=False,
+                 use_tensorboard=True, use_csv_logger=True, log_dir=None, use_conf_matrix=True, 
+                 class_names=[0,1,2]):
         """
         Instantiate only the callbacks you want to use. If a particular callback is not desired,
         set its corresponding use_* flag to False.
@@ -156,12 +263,13 @@ class AggregateCallbacks:
         self.monitor_metric = monitor_metric
         self.patience = patience
         self.use_tensorboard = use_tensorboard
+        self.use_conf_matrix = use_conf_matrix
 
         # EarlyStopping
         self.early_stopping = CustomEarlyStopping(monitor=monitor_metric, patience=patience) if use_early_stopping else None
         
         # ReduceLROnPlateau
-        self.reduce_lr = CustomReduceLROnPlateau(monitor=monitor_metric, factor=0.8, patience=3, min_lr=1e-6) if use_reduce_lr else None
+        self.reduce_lr = CustomReduceLROnPlateau(monitor=monitor_metric, factor=0.8, patience=5, min_lr=1e-6) if use_reduce_lr else None
         
         # ModelCheckpoint (requires a valid save_dir)
         if use_model_checkpoint:
@@ -183,6 +291,12 @@ class AggregateCallbacks:
                     f.write("epoch,train_loss,train_accuracy,val_loss,val_accuracy\n")
         else:
             self.csv_log_path = None
+            
+        # Confusion Matrix Callback (Validation Only)
+        self.conf_matrix_callback = None
+        if use_conf_matrix and log_dir is not None:
+            val_log_dir = os.path.join(log_dir, "val")
+            self.conf_matrix_callback = ConfusionMatrixCallback(val_log_dir, class_names)
 
     def on_aggregated_epoch_end(self, epoch, logs, model):
         """
@@ -209,6 +323,50 @@ class AggregateCallbacks:
                                  logs.get('val_accuracy', 0)])
             print(f"[CSVLogger] Epoch {epoch+1}: Metrics appended to {self.csv_log_path}.")
     
+    
+# --------------------------
+# Model architecture
+# --------------------------
+
+
+def transformer_encoder(inputs, head_size, num_heads, ff_dim, dropout=0.0):
+    """
+    A single transformer encoder block.
+    
+    Args:
+        inputs (tensor): Input tensor of shape (batch_size, seq_len, embed_dim).
+        head_size (int): Dimensionality of the query/key vectors in MultiHeadAttention.
+        num_heads (int): Number of attention heads.
+        ff_dim (int): Dimensionality of the feed-forward layer.
+        dropout (float): Dropout rate.
+        
+    Returns:
+        Tensor of the same shape as inputs.
+    """
+    # Layer normalization and multi-head self-attention
+    x = LayerNormalization(epsilon=1e-6)(inputs)
+    attn_output = MultiHeadAttention(key_dim=head_size, num_heads=num_heads, dropout=dropout)(x, x)
+    attn_output = Dropout(dropout)(attn_output)
+    x = Add()([inputs, attn_output])  # Skip connection
+
+    # Feed-forward network
+    y = LayerNormalization(epsilon=1e-6)(x)
+    y = Dense(ff_dim, activation="relu")(y)
+    y = Dropout(dropout)(y)
+    y = Dense(inputs.shape[-1])(y)
+    return Add()([x, y])
+
+
+class AttentionPooling(tf.keras.layers.Layer):
+    def __init__(self):
+        super(AttentionPooling, self).__init__()
+        self.W = tf.keras.layers.Dense(1, activation="tanh")
+        
+    def call(self, inputs):
+        attention_scores = tf.nn.softmax(self.W(inputs), axis=1)
+        context_vector = tf.reduce_sum(attention_scores * inputs, axis=1)
+        return context_vector
+
 
 def create_model(n_hours_back_hourly, n_ohlc_features, l2_strength, dropout_rate,
                  n_dense_features, activation, n_targets, output_activation,
@@ -235,8 +393,7 @@ def create_model(n_hours_back_hourly, n_ohlc_features, l2_strength, dropout_rate
     hourly_input = Input(shape=(n_hours_back_hourly, n_ohlc_features))
     x_hourly = LSTM(512, return_sequences=True, kernel_regularizer=l2(l2_strength))(hourly_input)
     x_hourly = Dropout(dropout_rate)(x_hourly)
-    x_hourly = LSTM(512, return_sequences=True, kernel_regularizer=l2(l2_strength))(x_hourly)
-    x_hourly = LSTM(512, kernel_regularizer=l2(l2_strength))(x_hourly)
+    x_hourly = LSTM(256, kernel_regularizer=l2(l2_strength))(x_hourly)
     
     # Engineered Layers
     eng_input = Input(shape=(n_dense_features,))
@@ -245,13 +402,10 @@ def create_model(n_hours_back_hourly, n_ohlc_features, l2_strength, dropout_rate
     # Concatenate Layers
     concatenated = Concatenate()([x_hourly, x_eng])
     x = Dense(512, activation=activation)(concatenated)
-    x = Dense(512, activation=activation)(x)
+    x = Dense(256, activation=activation)(x)
     
     # Output layer
-    output = Dense(n_targets, 
-                   activation=output_activation, 
-                   bias_initializer=tf.keras.initializers.Constant(initial_bias),
-                   name="output_layer")(x)
+    output = Dense(n_targets, activation=output_activation, name="output_layer")(x)
 
     # Define the model
     model = Model(inputs=[hourly_input, eng_input], outputs=output)

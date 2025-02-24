@@ -181,7 +181,7 @@ class LoadTrainingData:
             order_index = query_upper.index("ORDER BY")
             base_query, order_part = base_query[:order_index].strip(), base_query[order_index:].strip()
         else:
-            order_part = "ORDER BY pair, date"
+            order_part = "ORDER BY date, pair"
     
         # Remove any existing date filtering** to prevent conflicts
         base_query = re.sub(r"AND\s+date\s*[<>]=?\s*'\d{4}-\d{2}-\d{2}'", "", base_query, flags=re.IGNORECASE)

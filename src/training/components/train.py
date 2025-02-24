@@ -252,7 +252,8 @@ class Train:
         parsed_example = tf.io.parse_single_example(example_proto, feature_description)
     
         # Convert feature dictionary to tensor
-        feature_tensor = tf.stack(list(parsed_example.values()), axis=0)
+        ordered_features = [parsed_example[key] for key in feature_metadata.keys()]
+        feature_tensor = tf.stack(ordered_features, axis=0)
     
         # Apply reshaping if required
         category_config = self.feature_categories[category]
@@ -478,18 +479,30 @@ class Train:
             aggregated_callbacks = self._import_function(self.model_modules_path, self.callback_function)
             if callable(aggregated_callbacks):
                 # Create an instance of AggregatedCallbacks with any parameters you want.
-                aggregated_callbacks = aggregated_callbacks(save_dir=save_dir)
+                log_dir = os.path.join(save_dir, "logs", datetime.now().strftime("%Y%m%d-%H%M%S"))
+                aggregated_callbacks = aggregated_callbacks(save_dir=save_dir, log_dir=log_dir)
                 if aggregated_callbacks.use_tensorboard:
-                    log_dir = os.path.join(save_dir, "logs", datetime.now().strftime("%Y%m%d-%H%M%S"))
+                    train_log_dir = os.path.join(log_dir, "train")
                     callbacks=[tf.keras.callbacks.TensorBoard(
-                                log_dir=log_dir,
+                                log_dir=train_log_dir,
                                 histogram_freq=1,
                                 write_graph=False,
                                 write_images=True,
                                 update_freq='epoch',
                                 profile_batch=0)]
+                    
+                    val_log_dir = os.path.join(log_dir, "val")  # Separate validation logs
+                    val_callbacks = [tf.keras.callbacks.TensorBoard(
+                        log_dir=val_log_dir,
+                        histogram_freq=1,
+                        write_graph=False,  # Avoid duplicate graph logs
+                        write_images=False,  # No need to save images again
+                        update_freq='epoch',
+                        profile_batch=0
+                    )]
                 else:
                     callbacks=[]
+                    val_callbacks = []
             else:
                 raise TypeError("callback function is not callable")
         else:
@@ -577,7 +590,9 @@ class Train:
     
                 val_dataset, full_target_dataset, target_column_names = self._load_tfrecord_dataset(
                     feature_files, target_files)
-                results = model.evaluate(val_dataset, verbose=1)
+                
+                results = model.evaluate(val_dataset, verbose=1, callbacks=val_callbacks)
+                
                 # Typically, results[0] is loss and results[1] is accuracy.
                 val_loss_sum += results[0]
                 if len(results) > 1:
@@ -595,6 +610,14 @@ class Train:
             
                 del val_dataset
                 gc.collect()
+                
+            # Log Confusion Matrix (Validation Only)
+            if aggregated_callbacks and aggregated_callbacks.use_conf_matrix:
+                if not isinstance(predicted_categories, np.ndarray):
+                    predicted_categories = np.array(predicted_categories).reshape(-1)
+                if not isinstance(actual_targets, np.ndarray):
+                    actual_targets = np.array(actual_targets).reshape(-1)
+                aggregated_callbacks.conf_matrix_callback.log_conf_matrix(epoch, predicted_categories, actual_targets)
             
             # Compute Average Validation Metrics
             avg_val_loss = val_loss_sum / num_val_batches if num_val_batches else 0
