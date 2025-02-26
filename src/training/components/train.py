@@ -16,6 +16,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="tensorflow")
 # Suppress TensorFlow INFO logs and disable oneDNN custom operations
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import tensorflow as tf
 from tensorflow import keras
@@ -225,7 +226,7 @@ class Train:
         with open(json_file, "r") as f:
             metadata = json.load(f)
             
-            # Auto-fix incorrect data types
+        # Auto-fix incorrect data types
         for key, value in metadata.items():
             if value == "int64":
                 metadata[key] = tf.io.FixedLenFeature([], tf.int64)  # Ensure correct int64 format
@@ -244,18 +245,44 @@ class Train:
         """
         Parses a TFRecord example into features while ensuring proper reshaping.
         """
-        feature_description = {
-            key: tf.io.FixedLenFeature([], tf.float32)
-            for key in feature_metadata.keys()
-        }
-        # Parse only the feature part (exclude the target)
+        # Build the feature description based on metadata.
+        feature_description = {}
+        for key, dtype in feature_metadata.items():
+            if dtype in ["int64", "int"]:
+                # Keep original type during parsing.
+                feature_description[key] = tf.io.FixedLenFeature([], tf.int64)
+            elif dtype in ["float32", "float", "float64"]:
+                feature_description[key] = tf.io.FixedLenFeature([], tf.float32)
+            elif dtype == ["string", "object"]:
+                feature_description[key] = tf.io.FixedLenFeature([], tf.string)
+            else:
+                raise ValueError(f"Unsupported dtype {dtype} for feature {key}")
+    
+        # Parse the TFRecord.
         parsed_example = tf.io.parse_single_example(example_proto, feature_description)
     
-        # Convert feature dictionary to tensor
-        ordered_features = [parsed_example[key] for key in feature_metadata.keys()]
+        # Group features by datatype.
+        converted_features = {}
+        for key, dtype in feature_metadata.items():
+            value = parsed_example[key]
+            if dtype in ["int64", "int"]:
+                # If desired, you can choose to keep ints as ints; however, for stacking
+                # you need a uniform type. So we cast them to float32.
+                converted_features[key] = tf.cast(value, tf.float32)
+            elif dtype in ["float32", "float", "float64"]:
+                converted_features[key] = value  # Already float32.
+            elif dtype == ["string", "object"]:
+                # If the string represents a number, convert it; otherwise, handle separately.
+                # Here we attempt to convert to float32.
+                converted_features[key] = tf.strings.to_number(value, out_type=tf.float32)
+        
+        # Reassemble features in the original order.
+        ordered_features = [converted_features[key] for key in feature_metadata.keys()]
+    
+        # Now, all tensors in ordered_features are of type float32, so we can stack them.
         feature_tensor = tf.stack(ordered_features, axis=0)
     
-        # Apply reshaping if required
+        # Apply reshaping if the category configuration requires it.
         category_config = self.feature_categories[category]
         if category_config["reshape"]:
             feature_tensor = tf.reshape(feature_tensor, category_config["shape"])
@@ -277,7 +304,7 @@ class Train:
                 num_parallel_calls=tf.data.AUTOTUNE
             ) for category, files in feature_files.items()
         }
-    
+
         # Load and parse target dataset separately (return full data + `target`)
         def parse_target_fn(x):
             parsed = tf.io.parse_single_example(x, target_metadata)
@@ -298,7 +325,7 @@ class Train:
             tuple(feature_datasets.values()),  # Tuple of feature inputs
             target_labels_dataset  # Only target label for training
         ))
-    
+
         # Batch and prefetch for efficiency
         feature_tuple_dataset = feature_tuple_dataset.batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
         full_target_dataset = full_target_dataset.batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
@@ -467,6 +494,7 @@ class Train:
         return predicted_categories, actual_targets, confidences, extra_target_values
         
     @public_method
+    @tf.autograph.experimental.do_not_convert
     def fit_model(self, model):
         """
         Iteratively loads aligned feature and target TFRecord files in batches,
@@ -507,6 +535,8 @@ class Train:
                 raise TypeError("callback function is not callable")
         else:
             aggregated_callbacks = None
+            callbacks = []
+            val_callbacks = []
     
         for epoch in range(self.epochs):
             print(f"\nEpoch {epoch + 1}/{self.epochs}")

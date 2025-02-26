@@ -355,22 +355,12 @@ class PrepData:
             }
             return tf.train.Example(features=tf.train.Features(feature=feature_dict)).SerializeToString()
     
-        # Dynamically determine the number of threads
-        available_cores = os.cpu_count() or 4  # Use at least 4 if os.cpu_count() returns None
-        dataset_size = len(data)
-        num_threads = min(available_cores, max(1, dataset_size // 50_000))  # Scale with dataset size
-    
-        print(f"Using {num_threads} threads for TFRecord writing...")
-    
-        # Serialize data in parallel
-        with ThreadPoolExecutor(max_workers=num_threads) as executor:
-            serialized_examples = list(executor.map(serialize_example, data.itertuples(index=False)))
-    
-        # Write all serialized examples to the TFRecord file
         with tf.io.TFRecordWriter(filename) as writer:
-            writer.write(b"".join(serialized_examples))
-    
-        print(f"Saved TFRecord (Parallel, {num_threads} threads): {filename}")
+            for row in data.itertuples(index=False):
+                example = serialize_example(row)
+                writer.write(example)
+
+        print(f"Saved TFRecord: {filename}")
         
     def _create_and_save_weights_dict(self, data, target_col, fin):
         """
@@ -493,8 +483,6 @@ class PrepData:
                     
                     # Scale data if needed
                     if scale:
-                        # Separate primary keys (`date, pair`) before scaling
-                        primary_keys = data[self.primary_key]  # Extract primary keys
                         data_columns = [col for col in data.columns if col not in self.primary_key]  # Features only
                         data_index = data.index
                         original_dtypes = data.dtypes  # Save original dtypes
@@ -506,9 +494,6 @@ class PrepData:
                         # Restore original dtypes to prevent unintended changes
                         for col in scaled_df.columns:
                             scaled_df[col] = scaled_df[col].astype(original_dtypes[col])
-                    
-                        # Reattach `date, pair` back to the DataFrame
-                        data = pd.concat([primary_keys, scaled_df], axis=1)
                         
                     # Determine dataset split: 60% train, 20% val, 20% test
                     if idx < n_train:

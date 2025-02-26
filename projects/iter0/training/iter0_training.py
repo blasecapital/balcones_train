@@ -16,9 +16,9 @@ from io import BytesIO
 
 
 def custom_loss(y_true, y_pred, max_loss=5, 
-                penalty_weight=0.25, 
-                penalty_weight_distribution=0.75,
-                penalty_weight_minority_balance=0.25):
+                penalty_weight=0.05, 
+                penalty_weight_distribution=0.05,
+                penalty_weight_minority_balance=0.05):
     """
     Custom loss function that combines sparse categorical cross-entropy with three penalties:
       1. A penalty for false positives on the minority classes (encoded as 1 and 2).
@@ -391,9 +391,9 @@ def create_model(n_hours_back_hourly, n_ohlc_features, l2_strength, dropout_rate
     """
     # Hourly LSTM Layers
     hourly_input = Input(shape=(n_hours_back_hourly, n_ohlc_features))
-    x_hourly = LSTM(512, return_sequences=True, kernel_regularizer=l2(l2_strength))(hourly_input)
+    x_hourly = LSTM(128, return_sequences=True, kernel_regularizer=l2(l2_strength))(hourly_input)
     x_hourly = Dropout(dropout_rate)(x_hourly)
-    x_hourly = LSTM(256, kernel_regularizer=l2(l2_strength))(x_hourly)
+    x_hourly = LSTM(128, kernel_regularizer=l2(l2_strength))(x_hourly)
     
     # Engineered Layers
     eng_input = Input(shape=(n_dense_features,))
@@ -401,8 +401,9 @@ def create_model(n_hours_back_hourly, n_ohlc_features, l2_strength, dropout_rate
     
     # Concatenate Layers
     concatenated = Concatenate()([x_hourly, x_eng])
-    x = Dense(512, activation=activation)(concatenated)
-    x = Dense(256, activation=activation)(x)
+    x = Dense(128, activation=activation)(concatenated)
+    x = Dense(128, activation=activation)(x)
+    x = Dense(128, activation=activation)(x)
     
     # Output layer
     output = Dense(n_targets, activation=output_activation, name="output_layer")(x)

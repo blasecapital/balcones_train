@@ -213,15 +213,28 @@ class Eval:
         """
         Parses a TFRecord example into features while ensuring proper reshaping.
         """
-        feature_description = {
-            key: tf.io.FixedLenFeature([], tf.float32)
-            for key in feature_metadata.keys()
-        }
+        # Dynamically assign TFRecord feature types based on metadata
+        feature_description = {}
+        for key, dtype in feature_metadata.items():
+            if dtype in ["int64", "int"]:
+                feature_description[key] = tf.io.FixedLenFeature([], tf.int64)
+            elif dtype in ["float32", "float", "float64"]:
+                feature_description[key] = tf.io.FixedLenFeature([], tf.float32)
+            elif dtype == "string":
+                feature_description[key] = tf.io.FixedLenFeature([], tf.string)
+            else:
+                raise ValueError(f"Unsupported dtype {dtype} for feature {key}")
+                
         # Parse only the feature part (exclude the target)
         parsed_example = tf.io.parse_single_example(example_proto, feature_description)
     
         # Convert feature dictionary to tensor
-        ordered_features = [parsed_example[key] for key in feature_metadata.keys()]
+        ordered_features = []
+        for key in feature_metadata.keys():
+            feature_value = parsed_example[key]
+            if feature_value.dtype == tf.int64:
+                feature_value = tf.cast(feature_value, tf.float32)  # Convert int64 to float32
+            ordered_features.append(feature_value)
         feature_tensor = tf.stack(ordered_features, axis=0)
     
         # Apply reshaping if required
@@ -521,7 +534,7 @@ class Eval:
         
         file_num = str(self.explain_config["file_num"])
         
-        feature_files = [f for f in tfrecord_files if "features" in f and file_num in f]
+        feature_files = [f for f in tfrecord_files if ("features" in f or "feature" in f) and file_num in f]
         target_files = [f for f in tfrecord_files if "targets" in f and file_num in f]
 
         file_dict = {}
@@ -884,6 +897,10 @@ class Eval:
         # Ensure consistent class labels across y_true and y_pred
         unique_classes = np.unique(y_true)  # Get all possible classes in y_true
         n_classes = len(unique_classes)  # Total expected classes
+        
+        # If only one class exists, return None (ROC AUC requires multiple classes)
+        if len(np.unique(y_true)) == 1 or len(np.unique(y_pred)) == 1:
+            return None
     
         # Convert inputs to NumPy arrays
         y_true = np.array(y_true).flatten()
@@ -918,8 +935,8 @@ class Eval:
         n_classes = len(unique_classes)  # Number of expected classes
     
         # If only one class exists, return None (ROC AUC requires multiple classes)
-        if n_classes == 1:
-            return None  
+        if len(np.unique(y_true)) == 1 or len(np.unique(y_pred)) == 1:
+            return None
     
         # Convert arrays to NumPy format and ensure 1D shape
         y_true = np.array(y_true).flatten()
@@ -1000,16 +1017,28 @@ class Eval:
         return df
     
     def _fit_cal_fn(self, df):
+        if df.empty:
+            return [], []
+        
         n = 100
         df = df.reset_index(drop=True)
+        
         splits = np.array_split(df.index, n)
+        if not splits:
+            return [], []
+        
         y_conf_col = self.cal_config["y_conf"]
-    
+        
         x_list = []
         y_list = []
         for i, split in enumerate(splits):
+            if split.empty:  # Ensure the split is not empty
+                continue
             beg, end = split[0], split[-1] + 1
             df_split = df.iloc[beg:end]
+            if df_split.empty:
+                continue
+            
             x_list.append(round(df_split[y_conf_col].mean(), 4))
             y_list.append(round(df_split["wl"].mean(), 4))
         return x_list, y_list
@@ -1029,7 +1058,7 @@ class Eval:
         plt.xlabel("Pred Conf")
         plt.ylabel("Accuracy")
         plt.title(title)
-        plt.legend(labels=["model", "ideal"])
+        plt.legend(labels=["model", "benchmark"])
         plt.show()
         
     def _candidate_screen(self, df, accuracy_threshold, volume):

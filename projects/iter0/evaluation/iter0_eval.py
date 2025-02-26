@@ -6,8 +6,8 @@ import pandas as pd
 
 def calculate_running_profit(df, initial_value=100000):
     
-    df = df[(df['pair'].isin(['USDCAD', 'USDJPY'])) &
-            (df['confidence'] >= .45)]
+    df = df[(df['pair'].isin(['GBPUSD', 'USDJPY'])) &
+            (df['confidence'] >= .395)]
     df['date'] = pd.to_datetime(df['date'])
     df.sort_values(by="date", inplace=True)
     
@@ -24,7 +24,7 @@ def calculate_running_profit(df, initial_value=100000):
     MAX_TRADES = 10 # Maximum number of trades allowed per pair
     MAX_TOTAL_TRADES = 55  # Maximum number of total trades allowed
 
-    for i in range(len(df)):
+    for i in range(len(df) - 1):
         previous_value = running_profit[-1]
         row = df.iloc[i]
         current_time = row['date']
@@ -43,8 +43,10 @@ def calculate_running_profit(df, initial_value=100000):
             new_open_trades = []
             for trade_time, trade_signal, trade_hours_passed, trade_wl in open_trades[trade_pair]:
                 time_difference = (current_time - trade_time).total_seconds() / 3600  # Convert to hours
-
-                if time_difference >= trade_hours_passed:
+                
+                if trade_hours_passed == 'None':
+                    continue
+                if time_difference >= float(trade_hours_passed):
                     # Close the trade
                     if trade_wl == 1:
                         previous_value += previous_value * (profit)

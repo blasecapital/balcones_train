@@ -169,10 +169,10 @@ config = {
     "model_args": {
         'n_hours_back_hourly': 192 // 4, # len(features) // len(window)
         'n_ohlc_features': 4, # window
-        'l2_strength': 0.00, 
-        'dropout_rate': 0.0,
+        'l2_strength': 0.01, 
+        'dropout_rate': 0.5,
         'n_dense_features': 47, 
-        'activation': 'relu', 
+        'activation': 'tanh', 
         'n_targets': 3, 
         'output_activation': 'softmax',
         'initial_bias': True
@@ -184,19 +184,19 @@ config = {
                          r"\weights_dict\target_weights_dict - Copy.json"), 
     "data_dir": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt'
                  r'\deep_learning\projects\iter0\training\prepped_data'),    
-    "custom_loss": {"custom_loss_path": (r'C:\Users\brand\OneDrive'
-                                         r'\Blase Capital Mgmt\deep_learning'
-                                         r'\projects\iter0\training'
-                                         r'\iter0_training.py'),
-                    "module_name": "custom_loss"},
-    #"custom_loss": {},
+    # "custom_loss": {"custom_loss_path": (r'C:\Users\brand\OneDrive'
+    #                                      r'\Blase Capital Mgmt\deep_learning'
+    #                                      r'\projects\iter0\training'
+    #                                      r'\iter0_training.py'),
+    #                 "module_name": "custom_loss"},
+    "custom_loss": {},
     "use_weight_dict": True,
     # The layer is the key and the loss is the item
     "loss": {"output_layer": "sparse_categorical_crossentropy"},
     "metrics": ["accuracy"],
     "optimizer": {"type": "adam", "learning_rate": 0.001, "clipvalue": 1.0},
     "epochs": 100,
-    "batch_size": 1024,
+    "batch_size": 4096,
     "iteration_dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
                       r"\deep_learning\projects\iter0\training\iterations"),
     # Specify the file paths of the iteration config.py and model architecture file
