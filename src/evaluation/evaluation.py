@@ -1,36 +1,38 @@
 # evaluation.py
 
 
-from components import LoadEvalData, ProcessEvalData, EvalInference
+from components import Eval
 
 
 def evaluation():
     """
-    Design so it may be used for inference on the original training data set
-    and any new data set (forward testing data, for example).
     
-    Requirements:
-        - original load data config
-        - original preprocessing config
-        - original process_raw_data flags
-        - supporting files (scalers, initial_bias, weights, etc.)
-        - original create model function
-        - evaluation config (export, which slices to inference, custom modules like decoding predictions)
     """
-    # Load data
-    led = LoadEvalData('model1')
-    raw_data = led.load_data()
+    e = Eval()
     
-    # Preprocess data
-    ped = ProcessEvalData(raw_data, 'model1')
-    training_data = ped.process_raw_data()
+    pred=False
+    explain=False
+    metrics=False
+    cal=False
+    candidates=True
+    
+    if pred:
+        e.predict_and_store(mode="test")
         
-    # Inference and save
-    inf = EvalInference(training_data, 'model1')
-    inf.eval_inference()
+    if explain:
+        e.explain()
     
-    # Calculate and report metrics
-    
+    if metrics:
+        e.report_metrics(display_mode='convert')
+        
+    if cal:    
+        e.report_calibration(mode='convert')
+        
+    if candidates:
+        e.report_candidates(
+            mode='convert',
+            accuracy_threshold=.35,
+            volume=300)
     
 if __name__ == "__main__":
     evaluation()

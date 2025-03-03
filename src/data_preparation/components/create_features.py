@@ -155,8 +155,18 @@ class CreateFeatures():
                     cursor.execute(create_table_query)
                     print(f"Table '{table}' created successfully.")
     
-                # Save to the respective table in the database
-                table_df.to_sql(table, conn, if_exists="append", index=False)
+                # Prepare the `INSERT OR REPLACE` query
+                columns_list = ", ".join(table_df.columns)
+                placeholders = ", ".join(["?"] * len(table_df.columns))
+                insert_query = f"""
+                INSERT OR REPLACE INTO {table} ({columns_list})
+                VALUES ({placeholders});
+                """
+    
+                # Execute the batch insertion using executemany
+                data_to_insert = table_df.to_records(index=False).tolist()
+                cursor.executemany(insert_query, data_to_insert)
+    
                 print(f"Successfully stored features in table: {table}")
                 
     def _store_original_columns(self, df):

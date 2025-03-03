@@ -1,0 +1,8 @@
+{
+    "date": "object",
+    "pair": "object",
+    "target": "int64",
+    "hours_passed": "float32",
+    "buy_sl_time": "object",
+    "sell_sl_time": "object"
+}
