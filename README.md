@@ -4,7 +4,7 @@
 ## What is it?
 **balcones_train** is a TensorFlow and CUDA-based framework for training neural networks on a single, local machine while working with arbitrarily large datasets and enforcing documentation. It removes cloud dependency for small to medium-sized projects by chunking data at every stage—cleaning, preprocessing, training, and evaluation—allowing models to handle more data. You are only limited by your machine's capacity to store the full dataset in drive and a chunk of training data and model weights in RAM. The framework gives you custom control over feature and target engineering, model architecture, and business impact modeling functions for iterative development. Reproducibility is built in by storing custom functions, datasets, model architecture, and arguments, keeping models ready for production. 
 
-Blase Capital Management, LLC (a quantitative, Forex trading firm) began work on balcones_train in 2024. The framework is currently designed specifically for training trade-signal generating models using timeseries and technical features using exchange rates as the primary data source. Opportunities for development include making functions accommodate multi-target models, databases with different primary keys, and expanding into reinforcement learning.
+Blase Capital Management, LLC (a quantitative, Forex trading firm) began work on 'balcones_train' in 2024.
 
 ## Workflow
 ### 1. Set Up a New Project
@@ -64,7 +64,7 @@ Blase Capital Management, LLC (a quantitative, Forex trading firm) began work on
    conda env create -f balcones_train_env.yml
    conda activate balcones_train
    ```
-3. Configure your IDE by setting the working directory to the project's main folder and activate the balcones_train environment
+3. Configure your IDE by setting the working directory to the project's main folder and activate the 'balcones_train' environment
 4. Install/update NVIDIA driver
 5. Run the following to verify installation:
    ```sh
@@ -74,4 +74,37 @@ Blase Capital Management, LLC (a quantitative, Forex trading firm) began work on
    print("GPU device name:", tf.test.gpu_device_name())
    ```
 6. Walk through the tests folder to become acquainted with the modules
+
+## Project Status & Roadmap
+### Current Version: v0.1.0 (Pre-Release)
+This is an initial public version of `balcones_train`. The core framework is functional for a niche use case (training trade-signal generating models using timeseries and technical features using exchange rates as the primary data source), but further refinements and optimizations are planned to expand applicability.
+
+### Future Development:
+Version 1.0 will transform 'balcones_train' into a flexible framework for training neural networks across multiple machine learning tasks, while maintaining its core value proposition:
+Enabling local training with arbitrarily large datasets for small to medium-sized projects, while standardizing the full ML pipeline (cleaning, preprocessing, training, evaluation) and enforcing documentation for production-ready models.
+
+Planned enhancements:
+- [ ] **Expand beyond classification:** Support regression tasks and reinforcement learning (computer vision and language modeling may be included or reserved for future versions).
+- [ ] **Increase flexibility:** Refactor modules to handle various data types and projects outside of quant trading.
+- [ ] **Expand tests/examples:** Demonstrate and verify versatility and make project setup easier.
+- [ ] **Improve documentation:** Project should be easy to understand and contribute to.
+
+## Why `balcones_train`?
+Independent practitioners and small startups working with **datasets too large for memory** can streamline their workflow using `balcones_train`'s **batching functions**. Organizations handling **sensitive data** can improve security by training models **locally**. Users can also **prototype their models before committing to a cloud-based platform like Snowflake**.
+
+Beyond cost and security benefits, `balcones_train` **builds in best practices** to prevent **data leakage** and **ensure reproducibility**, a [prevailing issue in machine learning](https://reproducible.cs.princeton.edu/).
+
+### **Differentiators**
+1. **Avoid Cloud Costs** – No expensive GPU instances or unpredictable billing.  
+2. **Data Privacy & Security** – Keeps datasets offline, reducing compliance risks.  
+3. **Full Control** – Optimized environment, faster debugging, and no cloud restrictions.  
+4. **Faster Iteration Cycles** – Immediate hardware access with no cloud latency or interruptions.  
+5. **Better Reproducibility** – Enforces structured documentation and standardized workflows.
+
+### **Considerations**
+- **Storage Constraints** – Each training iteration **stores processed data, model weights, training metadata, and predictions**, which can **quickly consume disk space**. Manual memory management may be required on machines with limited storage.  
+- **Cloud Portability** – While `balcones_train` is designed for **local-first training**, it can be adapted to **Google Cloud, Colab, or other platforms** with **careful path configuration**. However, moving to the cloud may **compromise reproducibility** if best practices—such as requirement tracking and configuration logging—are not maintained.  
+
+## License
+This project is licensed under the BSD 3-Clause License.
 
