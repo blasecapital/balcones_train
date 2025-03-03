@@ -108,3 +108,7 @@ Beyond cost and security benefits, `balcones_train` **builds in best practices**
 ## License
 This project is licensed under the BSD 3-Clause License.
 
+### Third-Party Dependencies
+This project relies on open-source dependencies specified in `balcones_train_env.yml`.  
+Each dependency is subject to its own license, which can be found in their respective repositories.
+
