@@ -11,10 +11,8 @@ from utils import EnvLoader, public_method
 
 
 class CreateFeatures():
-    def __init__(self):#(self, df: pd.DataFrame):
-        #self.df: pd.DataFrame = df 
-        
-        # Instance of the EnvLoader
+    def __init__(self):
+         # Instance of the EnvLoader
         self.env_loader = EnvLoader()
         
         # Retrieve the path to the config module using the env_loader
@@ -33,16 +31,13 @@ class CreateFeatures():
         self.df_batch = self.config.get("df_batch")
         self.group_by = self.config.get("group_by")
         self.source_mode = self.config.get("source_mode")
+        # May include the following for future functionality for granular control
+        # over saving
         self.feature_save_mode = self.config.get("feature_save_mode")
         self.feature_batch = self.config.get("feature_batch")
         
         # Primary key columns
         self.primary_key = self.config.get("primary_key", [])
-
-        # Store the original columns, excluding primary key columns
-        #self.original_columns = [
-        #    col for col in df.columns if col not in self.primary_key
-        #]
     
         # Path of this iteration's feature module file
         self.module_path = self.config.get("feature_modules_path")
@@ -74,8 +69,6 @@ class CreateFeatures():
         Returns:
             pd.DataFrame: The DataFrame with only the feature columns.
         """
-        #cols_to_drop = self.original_columns  # Use the stored original columns
-        
         return df.drop(columns=cols_to_drop, errors="ignore")
     
     @public_method
@@ -109,7 +102,7 @@ class CreateFeatures():
         spec.loader.exec_module(module)
         
         # Retrieve the storage map name from config
-        map_name = self.storage_map  # The name of the storage map object (e.g., "storage_map")
+        map_name = self.storage_map
     
         # Access the storage map dynamically
         storage_map = getattr(module, map_name)
@@ -170,6 +163,10 @@ class CreateFeatures():
                 print(f"Successfully stored features in table: {table}")
                 
     def _store_original_columns(self, df):
+        """
+        Create a list of original columns. Helps trim excess data when saving
+        targets.
+        """
         original_columns = [
             col for col in df.columns if col not in self.primary_key
         ]
@@ -253,7 +250,7 @@ class CreateFeatures():
         Load data, calculate features, and store them incrementally.
         Handles pair-by-pair, batch-by-batch, or full dataset based on config.
         """
-        loader = LoadData()  # Initialize LoadData for dynamic data retrieval
+        loader = LoadData()
     
         if self.load_mode == "full":
             # Load full dataset

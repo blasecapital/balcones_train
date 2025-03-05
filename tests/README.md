@@ -63,8 +63,7 @@ python tests/run_dummy_tests.py
 │   ├── test_create_dummy_data_db.py  
 │   ├── test_feature_engineering.py  
 │   ├── test_target_engineering.py
-│   ├── test_data_preparation.py
-│   └── README.md  
+│   └── test_data_preparation.py
 │  
 │── /training  
 │   ├── /bad_keys
@@ -75,20 +74,16 @@ python tests/run_dummy_tests.py
 │   ├── config.py  
 │   ├── test_process_raw_data.py  
 │   ├── test_custom_train_funcs.py  
-│   ├── test_training.py
-│   └── README.md  
+│   └── test_training.py
 │  
 │── /evaluation  
 │   ├── /predictions
 │   ├── config.py  
 │   ├── test_custom_eval_funcs.py
-│   ├── test_evaluation.py
-│   └── README.md  
+│   └── test_evaluation.py
 │  
 │── /data
-│
 │── config.env
-│ 
 └── README.md  
 ```
 

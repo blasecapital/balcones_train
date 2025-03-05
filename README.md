@@ -10,8 +10,8 @@ Blase Capital Management, LLC (a quantitative, Forex trading firm) began work on
 - [Workflow & Demo](#workflow)
 - [Dependencies](#dependencies)
 - [Getting Started](#getting-started)
-- [Project Status & Roadmap[(#project-status-&-roadmap)
-- [Why 'balcones_train'](#why-balcones_train?)
+- [Project Status & Roadmap](#project-status--roadmap)
+- [Why 'balcones_train'](#why-balcones_train)
 - [License](#license)
 
 ## Workflow
@@ -98,6 +98,8 @@ Planned enhancements:
 - [ ] **Increase flexibility:** Refactor modules to handle various data types and projects outside of quant trading.
 - [ ] **Expand tests/examples:** Demonstrate and verify versatility and make project setup easier.
 - [ ] **Improve documentation:** Project should be easy to understand and contribute to.
+
+A really cool feature suite would automate the entire model training process by leveraging the standardized pipeline and incorporating AI agents to automatically engineer features/targets, tune hyperparameters, evaluate models, and tweak the custom configurations based on its findings for the next iteration.
 
 ## Why `balcones_train`?
 Independent practitioners and small startups working with **datasets too large for memory** can streamline their workflow using `balcones_train`'s **batching functions**. Organizations handling **sensitive data** can improve security by training models **locally**. Users can also **prototype their models before committing to a cloud-based platform like Snowflake**.
