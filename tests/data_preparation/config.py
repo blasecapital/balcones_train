@@ -4,7 +4,7 @@
 config = {
     # Arguements for load_data
     "load_mode": "full", # Options: "full", "batch", or "pair"
-    "collect_pairs": "list", # Options: query or list
+    "collect_pairs": "query", # Options: query or list
     "pair_query": {"BASE_DATABASE": """
                    SELECT DISTINCT(pair) FROM test_hourly_exchange_rate 
                    """}, # Key: path to test_raw_data database, Value: query

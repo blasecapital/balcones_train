@@ -9,7 +9,13 @@ config = {
         "hourly_features" : ("FEATURE_DATABASE", 
          """
          SELECT * FROM test_hourly_feature_data
+         ORDER BY pair, date
          """),
+         "tech_features": ("FEATURE_DATABASE",
+         """ 
+         SELECT * FROM test_technical_feature_data
+         """
+             ),
          "targets" : ("TARGET_DATABASE",
          """
          SELECT * FROM targets

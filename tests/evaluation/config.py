@@ -5,8 +5,8 @@ config = {
     # Specify the backtest evaluation directory
     "backtest": {
         "dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-                r"\tests\training\iterations\25_02_2025_17_43_24"),
-        "model_weights": "epoch10_trainLoss_1.1106_trainAcc_0.4937_valLoss_1.1042_valAcc_0.5031.h5",
+                r"\tests\training\iterations\04_03_2025_14_49_49"),
+        "model_weights": "epoch10_trainLoss_0.9859_trainAcc_0.4527_valLoss_1.0054_valAcc_0.4684.h5",
         "create_model_module_src": "test_custom_train_funcs.py",
         "model_module": "create_model",
         "model_config_src": "config.py",
@@ -19,8 +19,8 @@ config = {
         },
     "explain": {
         "dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-                r"\tests\training\iterations\25_02_2025_17_43_24"),
-        "model_weights": "epoch10_trainLoss_1.1106_trainAcc_0.4937_valLoss_1.1042_valAcc_0.5031.h5",
+                r"\tests\training\iterations\04_03_2025_14_49_49"),
+        "model_weights": "epoch10_trainLoss_0.9859_trainAcc_0.4527_valLoss_1.0054_valAcc_0.4684.h5",
         "create_model_module_src": "test_custom_train_funcs.py",
         "model_module": "create_model",
         "model_config_src": "config.py",
@@ -34,11 +34,11 @@ config = {
         "id_cols": ["date", "pair"],
         "prediction_dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
                            r"\deep_learning\tests\evaluation\predictions"
-                           r"\25_02_2025_17_43_24_epoch10.db")
+                           r"\04_03_2025_14_49_49_epoch10.db")
         },
     "metrics": {
         "db": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-               r"\tests\evaluation\predictions\25_02_2025_17_43_24_epoch10.db"),
+               r"\tests\evaluation\predictions\04_03_2025_14_49_49_epoch10.db"),
         "query": """
         SELECT * FROM predictions
         """,
@@ -54,7 +54,7 @@ config = {
         },
     "calibration": {
         "db": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-               r"\tests\evaluation\predictions\25_02_2025_17_43_24_epoch10.db"),
+               r"\tests\evaluation\predictions\04_03_2025_14_49_49_epoch10.db"),
         "query": """
         SELECT * FROM predictions
         """,
@@ -69,7 +69,7 @@ config = {
         },
     "candidates": {
         "db": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-               r"\\tests\evaluation\predictions\25_02_2025_17_43_24_epoch10.db"),
+               r"\\tests\evaluation\predictions\04_03_2025_14_49_49_epoch10.db"),
         # ***GENERALLY ENSURE THE DATASET IS FILTERED BY VAL AND TEST SPLITS***
         "query": """
         SELECT * FROM predictions

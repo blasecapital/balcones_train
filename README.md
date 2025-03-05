@@ -6,7 +6,17 @@
 
 Blase Capital Management, LLC (a quantitative, Forex trading firm) began work on 'balcones_train' in 2024.
 
+## Table of Contents
+- [Workflow & Demo](#workflow)
+- [Dependencies](#dependencies)
+- [Getting Started](#getting-started)
+- [Project Status & Roadmap[(#project-status-&-roadmap)
+- [Why 'balcones_train'](#why-balcones_train?)
+- [License](#license)
+
 ## Workflow
+Watch the [demo](https://youtu.be/XsPsbfBBHbo).
+
 ### 1. Set Up a New Project
 - Copy the contents of `/test` to `/projects`.
 - Create a new iteration directory (e.g., `/projects/project0`).

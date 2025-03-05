@@ -6,8 +6,8 @@ from data_preparation.components import CreateFeatures, CreateTargets
 
 def data_preparation(features=True, targets=True):
     """
-    Orchestrate the entire process of loading the desired data, applying
-    feature engineering, and storing the features for model training.
+    Orchestrate the entire process of loading raw data, engineering features, 
+    and storing datasets for model training.
     
     Prerequisites:
         - load_data requires data be stored in a database

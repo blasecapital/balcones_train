@@ -41,7 +41,7 @@ def filter_targets(df):
 def feature_engineering(df):
     """
     Perform feature engineering by:
-        - Adding sine and cosine transformations for the day of the month.
+        - Adding sine and cosine transformations for the hour of the day.
         - One-hot encoding the 'pair' column while retaining it.
 
     Args:
@@ -58,7 +58,7 @@ def feature_engineering(df):
     if df['date'].isna().any():
         raise ValueError("Some dates could not be converted to datetime. Check 'date' column.")
 
-    # Day-of-month cyclic encoding
+    # Hour-of-day cyclic encoding
     df['hour_sin'] = np.sin(2 * np.pi * (df['date'].dt.hour / 24))
     df['hour_cos'] = np.cos(2 * np.pi * (df['date'].dt.hour / 24))
 
@@ -80,7 +80,7 @@ def target_engineering(df):
 
     Returns:
         pd.DataFrame: DataFrame with new targets.
-        """
+    """
     category_to_index = {'loss': 0, 'buy': 1, 'sell': 2, 'wait': 0}    
     df['target'] = df['target'].map(category_to_index)
     
