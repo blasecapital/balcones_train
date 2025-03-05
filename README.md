@@ -116,6 +116,7 @@ Beyond cost and security benefits, `balcones_train` **builds in best practices**
 ### **Considerations**
 - **Storage Constraints** – Each training iteration **stores processed data, model weights, training metadata, and predictions**, which can **quickly consume disk space**. Manual memory management may be required on machines with limited storage.  
 - **Cloud Portability** – While `balcones_train` is designed for **local-first training**, it can be adapted to **Google Cloud, Colab, or other platforms** with **careful path configuration**. However, moving to the cloud may **compromise reproducibility** if best practices—such as requirement tracking and configuration logging—are not maintained.  
+- **Setup & Compatibility Hassel** - Setting up your machine to use its GPU for this library can be a challenge. Also, the library needs to have different versions compatible with different hardware, older and newer, which may discourage users and contributors.
 
 ## License
 This project is licensed under the BSD 3-Clause License.
