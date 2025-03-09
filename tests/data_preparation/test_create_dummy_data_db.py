@@ -133,8 +133,7 @@ def populate_dummy_table(db_path, n_samples):
     
 
 def main(fresh=False):
-    db_path = (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning\tests"
-               r"\data\test_raw_data.db")
+    db_path = (r"/workspace/tests/data/test_raw_data.db")
     
     # Optionally create a new db and data
     if fresh:

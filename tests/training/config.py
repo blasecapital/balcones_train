@@ -21,18 +21,14 @@ config = {
          SELECT * FROM targets
          """)},
          
-    "project_directory": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt'
-                          r'\deep_learning\tests\training'),
+    "project_directory": ('/workspace/tests/training'),
     
     # Use accross modules
     "primary_key": ['date', 'pair'],
     
     # Args for raw data processing
     # Path to low level functionality to pass to ProcessRawData
-    "data_processing_modules_path": (r'C:\Users\brand\OneDrive'
-                                     r'\Blase Capital Mgmt\deep_learning'
-                                     r'\tests\training'
-                                     r'\test_process_raw_data.py'),
+    "data_processing_modules_path": ('/workspace/tests/training/test_process_raw_data.py'),
     # Dictionary for collecting bad data primary keys, the dict key is a 
     # metadata name and its item is a set containing the env key to the 
     # database, a query for specifying the table and data to filter, and 
@@ -50,8 +46,7 @@ config = {
         """,
         'filter_targets')
         },
-    "bad_keys_path": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning'
-                      r'\tests\training\bad_keys'),
+    "bad_keys_path": ('/workspace/tests/training/bad_keys'),
     
     # Dictionary for cleaning and saving
     "align": {
@@ -97,8 +92,7 @@ config = {
             )
         },
     
-    "scaler_save_dir": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning'
-                         r'\tests\training\scalers'),
+    "scaler_save_dir": ('/workspace/tests/training/scalers'),
     
     # Specify the db_path to scale features for
     # Keys: meta
@@ -112,8 +106,7 @@ config = {
             )
         },
     
-    "prepped_data_dir": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt'
-                         r'\deep_learning\tests\training\prepped_data'),
+    "prepped_data_dir": ('/workspace/tests/training/prepped_data'),
     
     # Specify the db_path to scale features for
     # Keys: meta
@@ -150,9 +143,7 @@ config = {
                 }
             )
         },
-    "weight_dict_save_path": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
-                              r"\deep_learning\tests\training"
-                              r"\weights_dict\target_weights_dict.json"), 
+    "weight_dict_save_path": ('/workspace/tests/training/weights_dict/target_weights_dict.json'), 
             
     # Args for training
     # Reshape (number of windows (48 hours of ohlc=48), size of windows (ohlc=4))
@@ -171,10 +162,7 @@ config = {
                 'shape': None
                 }
         },
-    "model_modules_path": (r'C:\Users\brand\OneDrive'
-                           r'\Blase Capital Mgmt\deep_learning'
-                           r'\tests\training'
-                           r'\test_custom_train_funcs.py'),
+    "model_modules_path": ('/workspace/tests/training/test_custom_train_funcs.py'),
     "model_function": 'create_model',
     "callback_function": 'AggregateCallbacks',
     "model_args": {
@@ -191,15 +179,9 @@ config = {
         },
     
     # Use for both initial_bias and class_weights
-    "weight_dict_path": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
-                         r"\deep_learning\tests\training"
-                         r"\weights_dict\target_weights_dict.json"), 
-    "data_dir": (r'C:\Users\brand\OneDrive\Blase Capital Mgmt'
-                 r'\deep_learning\tests\training\prepped_data'),    
-    "custom_loss": {"custom_loss_path": (r'C:\Users\brand\OneDrive'
-                                         r'\Blase Capital Mgmt\deep_learning'
-                                         r'\tests\training'
-                                         r'\test_custom_train_funcs.py'),
+    "weight_dict_path": ('/workspace/tests/training/weights_dict/target_weights_dict.json'), 
+    "data_dir": ('/workspace/tests/training/prepped_data'),    
+    "custom_loss": {"custom_loss_path": ('/workspace/tests/training/test_custom_train_funcs.py'),
                     "module_name": "custom_loss"},
     #"custom_loss": {},
     "use_weight_dict": True,
@@ -209,13 +191,10 @@ config = {
     "optimizer": {"type": "adam", "learning_rate": 0.001, "clipvalue": 1.0},
     "epochs": 100,
     "batch_size": 64,
-    "iteration_dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
-                      r"\deep_learning\tests\training\iterations"),
+    "iteration_dir": ('/workspace/tests/training/iterations'),
     # Specify the file paths of the iteration config.py and model architecture file
     "requirements_paths": {
-        "config": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-                   r"\tests\training\config.py"),
-        "model": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-                  r"\tests\training\test_custom_train_funcs.py")
+        "config": ('/workspace/tests/trainingconfig.py'),
+        "model": ('/workspace/tests/training/test_custom_train_funcs.py')
         }
     }

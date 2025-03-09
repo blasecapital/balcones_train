@@ -86,9 +86,9 @@ def training(clean=False, prep=False, train=True):
         clean = CleanRawData()
         
         # Which clean processes do you want to run
-        inspect = False
+        inspect = True
         filter_keys = False
-        align = True
+        align = False
                 
         if inspect:        
             clean.inspect_data(

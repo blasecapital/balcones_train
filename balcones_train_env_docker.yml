@@ -1,0 +1,18 @@
+name: balcones_train
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - pandas
+  - matplotlib
+  - mplfinance
+  - numpy
+  - pickleshare
+  - pillow
+  - python-dateutil
+  - python-dotenv
+  - pytz
+  - scikit-learn
+  - scipy
+  - threadpoolctl
+  - tqdm

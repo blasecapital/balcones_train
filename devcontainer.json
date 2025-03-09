@@ -1,0 +1,15 @@
+{
+  "name": "Balcones Dev",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "balcones_dev",
+  "workspaceFolder": "/workspace",
+  "settings": {
+    "terminal.integrated.cwd": "/workspace"
+  },
+  "extensions": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-toolsai.jupyter",
+    "ms-vscode-remote.remote-containers"
+  ]
+}
