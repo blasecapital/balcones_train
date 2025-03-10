@@ -8,8 +8,7 @@ Blase Capital Management, LLC (a quantitative, Forex trading firm) began work on
 
 ## Table of Contents
 - [Workflow & Demo](#workflow)
-- [Dependencies](#dependencies)
-- [Getting Started](#getting-started)
+- [Setup](#setup)
 - [Project Status & Roadmap](#project-status--roadmap)
 - [Why 'balcones_train'](#why-balcones_train)
 - [License](#license)
@@ -52,38 +51,54 @@ Watch the [demo](https://youtu.be/XsPsbfBBHbo).
   - Assess if the model meets production requirements.  
 - **Business Impact:** Modify `eval_funcs.py` to model the impact of predictions.
 
-## Dependencies
+## Setup
+### Recommended steps using Docker:
+**Prerequisites**
+1. [Install Docker](https://www.docker.com/products/docker-desktop/)
+    - Enable WSL2 Backend if using Windows - Follow [this guide](https://learn.microsoft.com/en-us/windows/wsl/install)
+2. [Install VS Code](https://code.visualstudio.com/download)
+3. Install Docker and Python extensions in VS Code
+
+**Run 'balcones_train'***
+1. Clone the repository
+   ```sh
+   cd <your preferred install directory>
+   git clone https://github.com/blasecapital/balcones_train.git
+   ```
+2. Open VS Code and navigate to the 'balcones_train' directory in 'Explorer'
+3. Right-click on 'docker-compose.yml' and select 'Compose Up' to build the container
+4. Navigate to the Docker extension, right-click on the 'balcones_train_env' under 'Containers,' and select 'Attach Visual Studio Code'
+7. Walk through the /tests folder to become acquainted with the modules
+8. Optionally install a SQLite GUI to easily inspect the database files.
+
+**Stop the container**
+1. Close the attached VS Code window associated with the 'balcones_train_env' container
+2. Navigate to the 'balcones_train' directory in 'Explorer'
+3. Right-click on 'docker-compose.yml' and select 'Compose Down' to remove the running container and keep the image for faster restarts
+
+*Docker compose connects your local 'balcones_train' directory with the IDE automatically. This enables real time updates and data persistence when you rebuild the container.*
+
+### Local alternative:
 1. **CUDA & cuDNN:**  
    - Install **CUDA 11.2** and **cuDNN 8.1** (latest compatible version for Windows).  
    - Follow this [installation guide](https://youtu.be/hHWkvEcDBO0?si=3xxz4VfhOVcnri8E).  
-2. **Project Environment:**  
-   - All dependencies are listed in **`balcones_train_env.yml`**, including:  
-     - **TensorFlow-GPU 2.5.0**  
-     - **Pandas 1.1.5**  
-     - **NumPy 1.19.5**  
-3. **Create the Conda Environment:**  
+2. Clone repository
+3. Setup the environment using balcones_train_env.yml and Anaconda Prompt
    ```sh
    conda env create -f balcones_train_env.yml
    conda activate balcones_train
    ```
-
-## Getting Started
-1. Clone repository
-2. Setup the environment using balcones_train_env.yml and Anaconda Prompt
-   ```sh
-   conda env create -f balcones_train_env.yml
-   conda activate balcones_train
-   ```
-3. Configure your IDE by setting the working directory to the project's main folder and activate the 'balcones_train' environment
-4. Install/update NVIDIA driver
-5. Run the following to verify installation:
+4. Configure your IDE by setting the working directory to the project's main folder and activate the 'balcones_train' environment
+5. Install/update NVIDIA driver
+6. Run the following to verify installation:
    ```sh
    import tensorflow as tf
 
    print("Is TensorFlow using GPU?", tf.test.is_built_with_cuda())
    print("GPU device name:", tf.test.gpu_device_name())
    ```
-6. Walk through the tests folder to become acquainted with the modules
+7. Walk through the /tests folder to become acquainted with the modules
+8. Optionally install a SQLite GUI
 
 ## Project Status & Roadmap
 ### Current Version: v0.1.0 (Pre-Release)
@@ -115,8 +130,7 @@ Beyond cost and security benefits, `balcones_train` **builds in best practices**
 
 ### **Considerations**
 - **Storage Constraints** – Each training iteration **stores processed data, model weights, training metadata, and predictions**, which can **quickly consume disk space**. Manual memory management may be required on machines with limited storage.  
-- **Cloud Portability** – While `balcones_train` is designed for **local-first training**, it can be adapted to **Google Cloud, Colab, or other platforms** with **careful path configuration**. However, moving to the cloud may **compromise reproducibility** if best practices—such as requirement tracking and configuration logging—are not maintained.  
-- **Setup & Compatibility Hassel** - Setting up your machine to use its GPU for this library can be a challenge. Also, the library needs to have different versions compatible with different hardware, older and newer, which may discourage users and contributors.
+- **Cloud Portability** – While `balcones_train` is designed for **local-first training**, it can be adapted to **Google Cloud, Colab, or other platforms** with **careful path configuration**. However, moving to the cloud may **compromise reproducibility** if best practices—such as requirement tracking and configuration logging—are not maintained.
 
 ## License
 This project is licensed under the BSD 3-Clause License.

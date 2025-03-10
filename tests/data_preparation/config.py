@@ -37,20 +37,14 @@ config = {
     # Arguements for create_features
     "feature_save_mode": "single", # Options: single, batch, full
     "feature_batch": 4,
-    "feature_modules_path": (
-        r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
-		r"\deep_learning\tests\data_preparation"
-		r"\test_feature_engineering.py"),
+    "feature_modules_path": ('/workspace/tests/data_preparation/test_feature_engineering.py'),
     "main_feature_module": 'features',
     "feature_storage_map": 'storage_map',
 
     # Arguements for create_targets
     "target_save_mode": "single", # Options: single, batch, full
     "target_batch": 4,
-    "target_modules_path": (
-        r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
-		r"\deep_learning\tests\data_preparation"
-		r"\test_target_engineering.py"),
+    "target_modules_path": ('/workspace/tests/data_preparation/test_target_engineering.py'),
     "main_target_module": 'targets',
     "target_storage_map": 'storage_map'
     }

@@ -102,7 +102,7 @@ config = {
     "feature_scaling": {
         "test_features" : (
             "CLEAN_FEATURE_DATABASE",
-            ['test_technical_feature_data']
+            ['test_hourly_feature_data']
             )
         },
     

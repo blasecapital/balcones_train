@@ -86,19 +86,19 @@ def training(clean=False, prep=False, train=True):
         clean = CleanRawData()
         
         # Which clean processes do you want to run
-        inspect = True
+        inspect = False
         filter_keys = False
-        align = False
+        align = True
                 
         if inspect:        
             clean.inspect_data(
-                data_keys=['hourly_features'], # refers to the config's source_query keys
-                describe_features=False,
+                data_keys=['tech_features'], # refers to the config's source_query keys
+                describe_features=True,
                 describe_targets=False,
                 target_type='cat',
                 plot_features=True, 
                 # using 'rate' is the only time the query should use ORDER BY pair
-                plot_mode='rate', 
+                plot_mode='stat', 
                 plot_skip=1
                 )
             

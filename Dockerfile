@@ -47,6 +47,7 @@ RUN conda install -y \
     scipy \
     threadpoolctl \
     tqdm \
+    lime \
     "numpy=1.19.5" \
     "pandas=1.1.5" && \
     conda clean --all -y

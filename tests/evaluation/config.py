@@ -4,8 +4,7 @@
 config = {
     # Specify the backtest evaluation directory
     "backtest": {
-        "dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-                r"\tests\training\iterations\04_03_2025_14_49_49"),
+        "dir": ('/workspace/tests/training/iterations/04_03_2025_14_49_49'),
         "model_weights": "epoch10_trainLoss_0.9859_trainAcc_0.4527_valLoss_1.0054_valAcc_0.4684.h5",
         "create_model_module_src": "test_custom_train_funcs.py",
         "model_module": "create_model",
@@ -13,13 +12,11 @@ config = {
         "config_dict_name": "config",
         "model_args": "model_args",
         "feature_categories": "feature_categories",
-        "save_pred_dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
-                          r"\deep_learning\tests\evaluation\predictions"),
+        "save_pred_dir": ('/workspace/tests/evaluation/predictions'),
         "primary_keys": ("date", "pair")
         },
     "explain": {
-        "dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-                r"\tests\training\iterations\04_03_2025_14_49_49"),
+        "dir": ('/workspace/tests/training/iterations/04_03_2025_14_49_49'),
         "model_weights": "epoch10_trainLoss_0.9859_trainAcc_0.4527_valLoss_1.0054_valAcc_0.4684.h5",
         "create_model_module_src": "test_custom_train_funcs.py",
         "model_module": "create_model",
@@ -32,13 +29,10 @@ config = {
         "categorical_feature_id": "pair_",
         "sample_num": 16, # Specify which entry index in the file to explain,
         "id_cols": ["date", "pair"],
-        "prediction_dir": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
-                           r"\deep_learning\tests\evaluation\predictions"
-                           r"\04_03_2025_14_49_49_epoch10.db")
+        "prediction_dir": ('/workspace/tests/evaluation/predictions/04_03_2025_14_49_49_epoch10.db')
         },
     "metrics": {
-        "db": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-               r"\tests\evaluation\predictions\04_03_2025_14_49_49_epoch10.db"),
+        "db": ('/workspace/tests/evaluation/predictions/04_03_2025_14_49_49_epoch10.db'),
         "query": """
         SELECT * FROM predictions
         """,
@@ -53,8 +47,7 @@ config = {
         "metrics": ['accuracy', 'precision', 'recall', 'f1_score', 'log_loss', 'roc_auc'],
         },
     "calibration": {
-        "db": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-               r"\tests\evaluation\predictions\04_03_2025_14_49_49_epoch10.db"),
+        "db": ('/workspace/tests/evaluation/predictions/04_03_2025_14_49_49_epoch10.db'),
         "query": """
         SELECT * FROM predictions
         """,
@@ -68,8 +61,7 @@ config = {
             }
         },
     "candidates": {
-        "db": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt\deep_learning"
-               r"\\tests\evaluation\predictions\04_03_2025_14_49_49_epoch10.db"),
+        "db": ('/workspace/tests/evaluation/predictions/04_03_2025_14_49_49_epoch10.db'),
         # ***GENERALLY ENSURE THE DATASET IS FILTERED BY VAL AND TEST SPLITS***
         "query": """
         SELECT * FROM predictions
@@ -85,9 +77,7 @@ config = {
         "asset_col": "pair",
         # The custom function must use df as an arguement
         "custom_func": True,
-        "custom_func_path": (r"C:\Users\brand\OneDrive\Blase Capital Mgmt"
-                             r"\deep_learning\tests\evaluation"
-                             r"\test_custom_eval_funcs.py"),
+        "custom_func_path": ('/workspace/tests/evaluation/test_custom_eval_funcs.py'),
         "custom_func_name": "calculate_running_profit"
         }
     }
