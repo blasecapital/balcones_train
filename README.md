@@ -59,7 +59,7 @@ Watch the [demo](https://youtu.be/XsPsbfBBHbo).
 2. [Install VS Code](https://code.visualstudio.com/download)
 3. Install Docker and Python extensions in VS Code
 
-**Run 'balcones_train'***
+**Run 'balcones_train'**
 1. Clone the repository
    ```sh
    cd <your preferred install directory>
