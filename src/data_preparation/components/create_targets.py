@@ -71,26 +71,6 @@ class CreateTargets():
             pd.DataFrame: The DataFrame with only the target columns.
         """
         return df.drop(columns=cols_to_drop, errors="ignore")
-        
-    @public_method
-    def create_targets(self):
-        """
-        Apply the dynamically imported `targets` function to the DataFrame and
-        remove non-target columns.
-        """
-        # Import the targets function
-        targets_function = self._import_target_module()
-    
-        # Apply the targets function to the DataFrame
-        df_with_targets = targets_function(self.df)
-    
-        # Drop base data columns to isolate target columns
-        target_df = self._drop_base_data_columns(df_with_targets)
-    
-        print("Successfully calculated targets:")
-        print(target_df.head())
-    
-        return target_df
     
     def _import_storage_map(self):
         """

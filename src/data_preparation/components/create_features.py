@@ -3,11 +3,12 @@
 
 import importlib.util
 import sqlite3
-import pandas as pd
 import gc
 
-from .load_data import LoadData
+import pandas as pd
+
 from utils import EnvLoader, public_method
+from .load_data import LoadData
 
 
 class CreateFeatures():
@@ -70,26 +71,6 @@ class CreateFeatures():
             pd.DataFrame: The DataFrame with only the feature columns.
         """
         return df.drop(columns=cols_to_drop, errors="ignore")
-    
-    @public_method
-    def create_features(self):
-        """
-        Apply the dynamically imported `features` function to the DataFrame and
-        remove non-feature columns.
-        """
-        # Import the features function
-        features_function = self._import_feature_module()
-    
-        # Apply the features function to the DataFrame
-        df_with_features = features_function(self.df)
-    
-        # Drop base data columns to isolate feature columns
-        feature_df = self._drop_base_data_columns(df_with_features)
-    
-        print("Successfully calculated features:")
-        print(feature_df)
-    
-        return feature_df
     
     def _import_storage_map(self):
         """
