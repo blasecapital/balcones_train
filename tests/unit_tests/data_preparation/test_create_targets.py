@@ -3,6 +3,8 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
+import tempfile
+import os
 
 import pandas as pd
 
@@ -21,7 +23,7 @@ class TestCreateTargets(unittest.TestCase):
         self.mock_env_loader.get.return_value = "/mock/config.py"
 
         self.mock_env_loader.load_config_module.return_value = {
-            "main_target_module": "targets",
+            "main_target_module": "test_function",
             "target_storage_map": "storage_map",
             "primary_key": ['id', 'obj'],
             "pair_query": {"BASE_DATABASE": "SELECT pair FROM pairs"}
@@ -35,32 +37,46 @@ class TestCreateTargets(unittest.TestCase):
 
         self.create_targets = CreateTargets()
 
-    @patch('data_preparation.components.create_targets.importlib.util.spec_from_file_location')
-    @patch('data_preparation.components.create_targets.importlib.util.module_from_spec')
-    def test_import_target_module(self, mock_module_from_spec, mock_spec_from_file_location):
-        """Test that _import_target_module returns the target module."""
-        mock_spec = MagicMock()
-        mock_spec_from_file_location.return_value = mock_spec
-        mock_module = MagicMock()
-        mock_module_from_spec.return_value = mock_module
-        mock_spec.loader.exec_module.return_value = None
-        mock_module.targets = MagicMock()
+    def test_import_target_module(self):
+        """Test that `_import_function` correctly loads a function from a dynamically imported module."""
+        function_code = """
+def test_function():
+    return "Hello, World!"
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module_path = os.path.join(temp_dir, "test_module.py")
+            
+            # Write test function to a temporary module file
+            with open(module_path, "w") as f:
+                f.write(function_code)
 
-        targets_function = self.create_targets._import_target_module()
-        self.assertEqual(targets_function, mock_module.targets)
+            # Set module_path in PrepData
+            self.create_targets.module_path = module_path  
 
-    @patch('data_preparation.components.create_targets.importlib.util.spec_from_file_location') 
-    @patch('data_preparation.components.create_targets.importlib.util.module_from_spec')
-    def test_import_storage_map(self, mock_modules_from_spec, mock_spec_from_file_location):
-        """Test that _import_storage_map imports the storage_map from the target script."""
-        mock_spec = MagicMock()
-        mock_spec_from_file_location.return_value = mock_spec
-        mock_module = MagicMock()
-        mock_modules_from_spec.return_value = mock_module
-        mock_spec.loader.exec_module.return_value = None
+            # Call `_import_function` and check if it correctly loads `test_function`
+            imported_function = self.create_targets._import_target_module()
+            self.assertEqual(imported_function(), "Hello, World!")
 
-        storage_map = self.create_targets._import_storage_map()
-        self.assertEqual(storage_map, mock_module.storage_map)
+    def test_import_storage_map(self):
+        """Test that _import_storage_map imports the storage_map from the feature script."""
+        storage_map = """
+storage_map = {
+    "feature1": "data1",
+    "feature2": "data2"
+}
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module_path = os.path.join(temp_dir, "test_module.py")
+            
+            # Write test function to a temporary module file
+            with open(module_path, "w") as f:
+                f.write(storage_map)
+
+            # Set module_path in PrepData
+            self.create_targets.module_path = module_path  
+
+            imported_map = self.create_targets._import_storage_map()
+            self.assertEqual(imported_map, {"feature1": "data1", "feature2": "data2"})
 
     def test_store_original_columns(self):
         """Test that store_original_columns stores the original columns."""

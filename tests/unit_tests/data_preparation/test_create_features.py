@@ -3,6 +3,8 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
+import tempfile
+import os
 
 import pandas as pd
 
@@ -21,7 +23,7 @@ class TestCreateFeatures(unittest.TestCase):
         self.mock_env_loader.get.return_value = "/mock/config.py"
 
         self.mock_env_loader.load_config_module.return_value = {
-            "main_feature_module": "features",
+            "main_feature_module": "test_function",
             "feature_storage_map": "storage_map",
             "primary_key": ['id', 'obj'],
             "pair_query": {"BASE_DATABASE": "SELECT pair FROM pairs"}
@@ -35,33 +37,46 @@ class TestCreateFeatures(unittest.TestCase):
 
         self.create_features = CreateFeatures()
 
-    @patch('data_preparation.components.create_features.importlib.util.spec_from_file_location')
-    @patch('data_preparation.components.create_features.importlib.util.module_from_spec')
-    def test_import_feature_module(self, mock_module_from_spec, mock_spec_from_file_location):
-        """Test that _import_feature_module returns the feature module."""
-        mock_spec = MagicMock()
-        mock_spec_from_file_location.return_value = mock_spec
-        mock_module = MagicMock()
-        mock_module_from_spec.return_value = mock_module
-        mock_spec.loader.exec_module.return_value = None
-        mock_module.features = MagicMock()
+    def test_import_feature_module(self):
+        """Test that `_import_function` correctly loads a function from a dynamically imported module."""
+        function_code = """
+def test_function():
+    return "Hello, World!"
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module_path = os.path.join(temp_dir, "test_module.py")
+            
+            # Write test function to a temporary module file
+            with open(module_path, "w") as f:
+                f.write(function_code)
 
-        features_function = self.create_features._import_feature_module()
-        self.assertEqual(features_function, mock_module.features)
+            # Set module_path in PrepData
+            self.create_features.module_path = module_path  
 
-    @patch('data_preparation.components.create_features.importlib.util.spec_from_file_location')
-    @patch('data_preparation.components.create_features.importlib.util.module_from_spec')
-    def test_import_storage_map(self, mock_modules_from_spec, mock_spec_from_file_location):
+            # Call `_import_function` and check if it correctly loads `test_function`
+            imported_function = self.create_features._import_feature_module()
+            self.assertEqual(imported_function(), "Hello, World!")
+
+    def test_import_storage_map(self):
         """Test that _import_storage_map imports the storage_map from the feature script."""
-        mock_spec = MagicMock()
-        mock_spec_from_file_location.return_value = mock_spec
-        mock_module = MagicMock()
-        mock_modules_from_spec.return_value = mock_module
-        mock_spec.loader.exec_module.return_value = None
-        mock_module.storage_map = MagicMock()
+        storage_map = """
+storage_map = {
+    "feature1": "data1",
+    "feature2": "data2"
+}
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module_path = os.path.join(temp_dir, "test_module.py")
+            
+            # Write test function to a temporary module file
+            with open(module_path, "w") as f:
+                f.write(storage_map)
 
-        storage_map_function = self.create_features._import_storage_map()
-        self.assertEqual(storage_map_function, mock_module.storage_map)
+            # Set module_path in PrepData
+            self.create_features.module_path = module_path  
+
+            imported_map = self.create_features._import_storage_map()
+            self.assertEqual(imported_map, {"feature1": "data1", "feature2": "data2"})
 
     def test_store_original_columns(self):
         """Test that _store_original_columns removes primary keys from DataFrame columns."""

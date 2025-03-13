@@ -253,7 +253,7 @@ class Train:
                 feature_description[key] = tf.io.FixedLenFeature([], tf.int64)
             elif dtype in ["float32", "float", "float64"]:
                 feature_description[key] = tf.io.FixedLenFeature([], tf.float32)
-            elif dtype == ["string", "object"]:
+            elif dtype in ["string", "object"]:
                 feature_description[key] = tf.io.FixedLenFeature([], tf.string)
             else:
                 raise ValueError(f"Unsupported dtype {dtype} for feature {key}")
@@ -271,7 +271,7 @@ class Train:
                 converted_features[key] = tf.cast(value, tf.float32)
             elif dtype in ["float32", "float", "float64"]:
                 converted_features[key] = value  # Already float32.
-            elif dtype == ["string", "object"]:
+            elif dtype in ["string", "object"]:
                 # If the string represents a number, convert it; otherwise, handle separately.
                 # Here we attempt to convert to float32.
                 converted_features[key] = tf.strings.to_number(value, out_type=tf.float32)
@@ -416,6 +416,12 @@ class Train:
         time as the unqiue identifier. Store the iterations' config.py and
         model creation .py file.
         """
+        # Ensure required files exist in `requirements_paths`
+        required_keys = ["config", "model"]
+        for key in required_keys:
+            if key not in self.requirements_paths:
+                raise KeyError(f"Missing required key '{key}' in `requirements_paths`.")
+
         # Create the unique save directory name
         now = datetime.now()
         dt_string = now.strftime("%d_%m_%Y_%H_%M_%S")

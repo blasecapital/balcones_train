@@ -114,12 +114,11 @@ class CleanRawData:
                 # Value falls within a valid bin
                 bin_frequencies[feature][idx - 1] += 1
     
-    def _calculate_percentiles(self, feature, bin_edges, bin_frequencies, total_count):
+    def _calculate_percentiles(self, bin_edges, bin_frequencies, total_count):
         """
         Calculate percentiles (e.g., 25%, 50%, 75%) using binned data.
     
         Args:
-            feature (str): The feature/column name.
             bin_edges (array): The edges of the bins.
             bin_frequencies (dict): A dictionary storing bin frequencies, including underflow and overflow bins.
             total_count (int): The total number of valid values for the feature.
@@ -189,7 +188,6 @@ class CleanRawData:
     
             # Calculate percentiles using bin data
             percentiles = self._calculate_percentiles(
-                feature,
                 progress_log["bin_edges"][feature],
                 progress_log["bin_frequencies"][feature],
                 count,
