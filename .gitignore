@@ -3,9 +3,5 @@ __pycache__/
 *.py[cod]
 
 # Ignore data directories
-projects/data/*.db
-projects/**/training/bad_keys/*.txt
-projects/**/training/scalers/*.pkl
-projects/**/training/prepped_data/*.tfrecord
-projects/**/training/iterations
-projects/**/evaluation/predictions
+/projects/*
+!/projects/fx_classify_demo/

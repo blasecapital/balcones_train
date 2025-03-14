@@ -1,0 +1,16 @@
+version: "1.0"
+
+services:
+  balcones_dev:
+    image: balcones_train_env
+    container_name: balcones_dev
+    build: .
+    runtime: nvidia
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    environment:
+      - PYTHONPATH=/workspace/src
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+    command: sleep infinity
