@@ -76,7 +76,7 @@ class Eval:
     
         # Load class weights from the JSON file
         if not os.path.exists(weight_dict_path):
-            raise FileNotFoundError(f"Weight dictionary not found at: {self.weight_dict_path}")
+            raise FileNotFoundError(f"Weight dictionary not found at: {weight_dict_path}")
     
         with open(weight_dict_path, "r") as f:
             class_weights = json.load(f)
@@ -111,7 +111,7 @@ class Eval:
             config_path, config["config_dict_name"])
         return model_config
     
-    def _group_pred_files(self, data_dir, model_config, feature_category, mode):
+    def _group_pred_files(self, data_dir, feature_category, mode):
         """
         Go through the prepped data directory and group feature and target
         sets by their number.
@@ -220,7 +220,7 @@ class Eval:
                 feature_description[key] = tf.io.FixedLenFeature([], tf.int64)
             elif dtype in ["float32", "float", "float64"]:
                 feature_description[key] = tf.io.FixedLenFeature([], tf.float32)
-            elif dtype == "string":
+            elif dtype in ["string", "object"]:
                 feature_description[key] = tf.io.FixedLenFeature([], tf.string)
             else:
                 raise ValueError(f"Unsupported dtype {dtype} for feature {key}")
@@ -228,13 +228,23 @@ class Eval:
         # Parse only the feature part (exclude the target)
         parsed_example = tf.io.parse_single_example(example_proto, feature_description)
     
-        # Convert feature dictionary to tensor
-        ordered_features = []
-        for key in feature_metadata.keys():
-            feature_value = parsed_example[key]
-            if feature_value.dtype == tf.int64:
-                feature_value = tf.cast(feature_value, tf.float32)  # Convert int64 to float32
-            ordered_features.append(feature_value)
+        # Group features by datatype.
+        converted_features = {}
+        for key, dtype in feature_metadata.items():
+            value = parsed_example[key]
+            if dtype in ["int64", "int"]:
+                # If desired, you can choose to keep ints as ints; however, for stacking
+                # you need a uniform type. So we cast them to float32.
+                converted_features[key] = tf.cast(value, tf.float32)
+            elif dtype in ["float32", "float", "float64"]:
+                converted_features[key] = value  # Already float32.
+            elif dtype in ["string", "object"]:
+                # If the string represents a number, convert it; otherwise, handle separately.
+                # Here we attempt to convert to float32.
+                converted_features[key] = tf.strings.to_number(value, out_type=tf.float32)
+        
+        # Reassemble features in the original order.
+        ordered_features = [converted_features[key] for key in feature_metadata.keys()]
         feature_tensor = tf.stack(ordered_features, axis=0)
     
         # Apply reshaping if required
@@ -469,7 +479,7 @@ class Eval:
         
         # Group the prepped data so feature sets are bundled with corresponding
         # target sets
-        predict_groups = {category: self._group_pred_files(data_dir, model_config, category, mode)
+        predict_groups = {category: self._group_pred_files(data_dir, category, mode)
                           for category in feature_categories}
         
         for num in sorted(predict_groups[next(iter(feature_categories))].keys()):
@@ -529,7 +539,7 @@ class Eval:
     
     # backtest explain utils -----------------------#
     
-    def _group_lime_files(self, data_dir, model_config, category):
+    def _group_lime_files(self, data_dir):
         tfrecord_files = sorted([f for f in os.listdir(data_dir) if f.endswith('.tfrecord')])
         
         file_num = str(self.explain_config["file_num"])
@@ -578,13 +588,18 @@ class Eval:
         """
         Dynamically extract and store input shapes from the dataset's element_spec.
         """        
-        input_specs = dataset.element_spec[0]
+        input_specs = dataset.element_spec
         
         if not isinstance(input_specs, (list, tuple)):
             input_specs = [input_specs]
         
-        # Remove the batch dimension (None) to obtain the true input shapes.
-        lime_input_shapes = [tuple(spec.shape[1:]) for spec in input_specs]
+        # Extract the true input shapes, handling multiple input tensors
+        lime_input_shapes = []
+        for spec in input_specs:
+            if isinstance(spec, tuple):  # If the spec itself is a tuple (multi-input case)
+                lime_input_shapes.extend([tuple(s.shape[1:]) for s in spec])  
+            else:
+                lime_input_shapes.append(tuple(spec.shape[1:]))
         
         # Compute the flattened dimensions for each input.
         lime_flat_dims = [np.prod(shape) for shape in lime_input_shapes]
@@ -602,14 +617,24 @@ class Eval:
         # Prepare the list of inputs for the model.
         inputs = []
         for i in range(len(lime_input_shapes)):
-            start = lime_cum_indices[i]
-            end = lime_cum_indices[i + 1]
+            start = int(lime_cum_indices[i])
+            end = int(lime_cum_indices[i + 1])
+
             # Slice the corresponding columns from X.
             input_i_flat = X[:, start:end]
+
+            # Check if the input is empty
+            if input_i_flat.size == 0:
+                print(f"Warning: Empty input detected for index {i} (start={start}, end={end}) - Skipping")
+                continue  # Skip this input to avoid errors
+            
             # Reshape the flat array back to its original shape: (n_samples, *input_shape).
             input_i = input_i_flat.reshape(-1, *lime_input_shapes[i])
             inputs.append(input_i)
-        
+
+        if not inputs:
+            raise ValueError("No valid inputs found for model prediction!")
+
         predictions = model.predict(inputs)
         
         return predictions
@@ -661,9 +686,11 @@ class Eval:
             # Convert each column from the batch to a list, handling SparseTensors if needed
             current_target_dict = {
                 col: (
-                    tf.sparse.to_dense(full_targets[col]).numpy().tolist()
+                    [val[0] if isinstance(val, list) and len(val) == 1 else val for val in 
+                        tf.sparse.to_dense(full_targets[col]).numpy().tolist()]
                     if isinstance(full_targets[col], tf.sparse.SparseTensor)
-                    else full_targets[col].numpy().tolist()
+                    else [val[0] if isinstance(val, list) and len(val) == 1 else val for val in 
+                        full_targets[col].numpy().tolist()]
                 )
                 for col in target_column_names
             }
@@ -729,7 +756,7 @@ class Eval:
         
         # Group the prepped data so feature sets are bundled with corresponding
         # target sets
-        predict_groups = {category: self._group_lime_files(data_dir, model_config, category)
+        predict_groups = {category: self._group_lime_files(data_dir)
                           for category in feature_categories}
         
         for num in sorted(predict_groups[next(iter(feature_categories))].keys()):
