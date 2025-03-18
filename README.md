@@ -68,7 +68,7 @@ Watch the [demo](https://youtu.be/XsPsbfBBHbo).
 2. Open VS Code and navigate to the 'balcones_train' directory in 'Explorer'
 3. Right-click on 'docker-compose.yml' and select 'Compose Up' to build the container
 4. Navigate to the Docker extension, right-click on the 'balcones_train_env' under 'Containers,' and select 'Attach Visual Studio Code'
-7. Walk through the /tests folder to become acquainted with the modules
+7. Walk through the /projects folder to become acquainted with the demo projects
 8. Optionally install a SQLite GUI to easily inspect the database files.
 
 **Stop the container**
@@ -97,7 +97,7 @@ Watch the [demo](https://youtu.be/XsPsbfBBHbo).
    print("Is TensorFlow using GPU?", tf.test.is_built_with_cuda())
    print("GPU device name:", tf.test.gpu_device_name())
    ```
-7. Walk through the /tests folder to become acquainted with the modules
+7. Walk through the /projects folder to become acquainted with the demo projects
 8. Optionally install a SQLite GUI
 
 ## Project Status & Roadmap
@@ -111,7 +111,7 @@ Enabling local training with arbitrarily large datasets for small to medium-size
 Planned enhancements:
 - [ ] **Expand beyond classification:** Support regression tasks and reinforcement learning (computer vision and language modeling may be included or reserved for future versions).
 - [ ] **Increase flexibility:** Refactor modules to handle various data types and projects outside of quant trading.
-- [ ] **Expand tests/examples:** Demonstrate and verify versatility and make project setup easier.
+- [ ] **Expand demos:** Demonstrate and verify versatility and make project setup easier.
 - [ ] **Improve documentation:** Project should be easy to understand and contribute to.
 
 A really cool feature suite would automate the entire model training process by leveraging the standardized pipeline and incorporating AI agents to automatically engineer features/targets, tune hyperparameters, evaluate models, and tweak the custom configurations based on its findings for the next iteration.
