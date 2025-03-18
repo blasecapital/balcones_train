@@ -19,7 +19,7 @@ from evaluation.components.evaluate import Eval
 
 
 def start():
-    # Copy config.env to /workspace
+    """Copy config.env to /workspace to set testing paths."""
     source_path = "/workspace/tests/integration_tests/fx_classify/pipeline_0/config.env"
     destination_path = "/workspace/config.env"
 
@@ -36,6 +36,9 @@ def start():
     
 
 def end():
+    """Delete files created during testing process."""
+    print("Beginning test clean up...")
+
     # Delete train and clean databases after completion
     train_db = '/workspace/tests/integration_tests/fx_classify/fixtures/fx_classify_test_train_data.db'
     clean_db = '/workspace/tests/integration_tests/fx_classify/fixtures/fx_classify_test_train_data_clean.db'
@@ -44,21 +47,57 @@ def end():
     if os.path.exists(clean_db):
         os.remove(clean_db)
 
+    # Delete bad keys
+    bad_keys_path = '/workspace/tests/integration_tests/fx_classify/pipeline_0/bad_keys'
+    if os.path.exists(bad_keys_path) and os.listdir(bad_keys_path):
+        for file in os.listdir(bad_keys_path):
+            file_path = os.path.join(bad_keys_path, file)
+            os.remove(file_path)
+
+    # Delete new model train folder
+    iterations_path = '/workspace/tests/integration_tests/fx_classify/pipeline_0/iterations'
+    keep_folder = '14_03_2025_23_02_54'
+    for folder in os.listdir(iterations_path):
+        folder_path = os.path.join(iterations_path, folder)
+        if os.path.isdir(folder_path) and folder != keep_folder:
+            shutil.rmtree(folder_path)
+
+    # Delete .tfrecord files and related .json files
+    prepped_data_path = '/workspace/tests/integration_tests/fx_classify/pipeline_0/prepped_data'
+    if os.path.exists(prepped_data_path) and os.listdir(prepped_data_path):
+        for file in os.listdir(prepped_data_path):
+            file_path = os.path.join(prepped_data_path, file)
+            os.remove(file_path)
+
+    # Delete scalers
+    scaler_path = '/workspace/tests/integration_tests/fx_classify/pipeline_0/scalers'
+    if os.path.exists(scaler_path) and os.listdir(scaler_path):
+        for file in os.listdir(scaler_path):
+            file_path = os.path.join(scaler_path, file)
+            os.remove(file_path)
+
+    # Deleter weights dict
+    weights_dict_path = '/workspace/tests/integration_tests/fx_classify/pipeline_0/weights_dict'
+    if os.path.exists(weights_dict_path) and os.listdir(weights_dict_path):
+        for file in os.listdir(weights_dict_path):
+            file_path = os.path.join(weights_dict_path, file)
+            os.remove(file_path)
+
 
 class TestFxClassify0(unittest.TestCase):
 
-    def test_start(self):
-        start()
-
-    def test_CreateFeatures(self):
+    def test_create_features(self):
+        """Test features are calculated and stored."""
         cf = CreateFeatures()
         cf.calculate_and_store_features()
 
-    def test_CreateTargets(self):
+    def test_create_targets(self):
+        """Test targets are calculated and stored."""
         ct = CreateTargets()
         ct.calculate_and_store_targets()
 
     def test_train_db(self):
+        """Check feature and target databases were prepared correctly."""
         db_path = "/workspace/tests/integration_tests/fx_classify/fixtures/fx_classify_test_train_data.db"
         conn = sqlite3.connect(db_path)
         target_query = """
@@ -181,10 +220,9 @@ class TestFxClassify0(unittest.TestCase):
         pd.testing.assert_frame_equal(tech, expected_tech)
 
     @patch("matplotlib.pyplot.show")
-    def test_CleanRawData(self, mock_show):
+    def test_inspect(self, mock_show):
+        """Test CleanRawData() inspect method."""
         clean = CleanRawData()
-
-        # Test inspect_data
         inspect_cases = [
             {"data_keys": ["hourly_features"], "plot_features": True, "plot_mode": "rate"},
             {"data_keys": ["tech_features"], "describe_features": True, "plot_features": True, "plot_mode": "stat"},
@@ -199,7 +237,9 @@ class TestFxClassify0(unittest.TestCase):
                     continue
                 mock_show.assert_called()
 
-        # Test filter_keys
+    def test_clean(self):
+        """Test CleanRawData() clean method."""
+        clean = CleanRawData()
         clean.clean(data_keys=[])
 
         hourly_keys = '/workspace/tests/integration_tests/fx_classify/pipeline_0/bad_keys/hourly_features_bad_keys.txt'
@@ -224,7 +264,9 @@ class TestFxClassify0(unittest.TestCase):
         self.assertEqual(hourly_five, expected_hourly)
         self.assertEqual(target_five, expected_target)
 
-        # Test align
+    def test_align(self):
+        """Test CleanRawData() align method."""
+        clean = CleanRawData()
         clean.align()
         expected_result = 4888
         
@@ -242,7 +284,8 @@ class TestFxClassify0(unittest.TestCase):
         self.assertEqual(expected_result, hourly_len)
         self.assertEqual(expected_result, tech_len)
 
-    def test_PrepData(self):
+    def test_engineer(self):
+        """Test PrepData.engineer() correctly transforms and adds features and targets."""
         prep = PrepData()
         prep.engineer("all")
 
@@ -292,6 +335,9 @@ class TestFxClassify0(unittest.TestCase):
         })
         pd.testing.assert_frame_equal(engineered, expected_engineered)
 
+    def test_feature_scaling(self):
+        """Test PrepData.feature_scaling() yields .pkl files."""
+        prep = PrepData()
         prep.feature_scaling["test_features"] = (
             "CLEAN_FEATURE_DATABASE",
             ['test_hourly_feature_data']
@@ -303,15 +349,23 @@ class TestFxClassify0(unittest.TestCase):
             )
         prep.scale()
 
+    def test_save_batches(self):
+        """Test PrepData.save_batches() yields .tfrecord files."""
+        prep = PrepData()
         prep.save_batches()
+
+    def test_validate_record(self):
+        """Test PrepData.validate_record() correctly parses .tfrecords."""
+        prep = PrepData()
         prep.validate_record()
 
-    def test_Train(self):
+    def test_train_models(self):
+        """Test Train.train_models runs successfully."""
         train = Train()
         train.train_models()        
 
-    @patch("matplotlib.pyplot.show")
-    def test_Eval(self, mock_show):
+    def test_predict_and_store(self):
+        """Test Eval.predict_and_store() stores model predictions."""
         eval = Eval()
         eval.predict_and_store(mode="full")
 
@@ -328,36 +382,59 @@ class TestFxClassify0(unittest.TestCase):
         }).astype({"confidence": "string"})
         pd.testing.assert_frame_equal(pred, expected_pred)
 
+    @patch("matplotlib.pyplot.show")
+    def test_explain(self, mock_show):
+        """Test Eval.explain() correctly runs LIME."""
+        eval = Eval()
         eval.explain()
+
+    def test_report_metrics(self):
+        """Test Eval.report_metrics() calculates and prints metrics."""
+        eval = Eval()
         eval.report_metrics()
         eval.report_metrics(display_mode="convert")
+
+    @patch("matplotlib.pyplot.show")
+    def test_report_calibration(self, mock_show):
+        """Test Eval.report_calibration() calculates and plots calibration metrics."""
+        eval = Eval()
         eval.report_calibration()
         eval.report_calibration(mode="convert")
+
+    @patch("matplotlib.pyplot.show")
+    def test_report_candidates(self, mock_show):
+        """Test Eval.report_candidates() filters candidates and runs custom eval function."""
+        eval = Eval()
         eval.report_candidates(
             mode="convert",
             accuracy_threshold=.35,
             volume=10
         )
 
-    def test_end(self):
-        end()
-
 
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(TestFxClassify0("test_start"))
-    suite.addTest(TestFxClassify0("test_CreateFeatures"))
-    suite.addTest(TestFxClassify0("test_CreateTargets"))
+    suite.addTest(TestFxClassify0("test_create_features"))
+    suite.addTest(TestFxClassify0("test_create_targets"))
     suite.addTest(TestFxClassify0("test_train_db"))
-    suite.addTest(TestFxClassify0("test_CleanRawData"))
-    suite.addTest(TestFxClassify0("test_PrepData"))
-    suite.addTest(TestFxClassify0("test_Train"))
-    suite.addTest(TestFxClassify0("test_Eval"))
-
-    #suite.addTest(TestFxClassify0("test_end"))
+    suite.addTest(TestFxClassify0("test_inspect"))
+    suite.addTest(TestFxClassify0("test_clean"))
+    suite.addTest(TestFxClassify0("test_align"))
+    suite.addTest(TestFxClassify0("test_engineer"))
+    suite.addTest(TestFxClassify0("test_feature_scaling"))
+    suite.addTest(TestFxClassify0("test_save_batches"))
+    suite.addTest(TestFxClassify0("test_validate_record"))
+    suite.addTest(TestFxClassify0("test_train_models"))
+    suite.addTest(TestFxClassify0("test_predict_and_store"))
+    suite.addTest(TestFxClassify0("test_explain"))
+    suite.addTest(TestFxClassify0("test_report_metrics"))
+    suite.addTest(TestFxClassify0("test_report_calibration"))
+    suite.addTest(TestFxClassify0("test_report_candidates"))
     return suite
 
 
 if __name__ == "__main__":
-    runner = unittest.TextTestRunner()
+    start()
+    runner = unittest.TextTestRunner(verbosity=2)
     runner.run(suite())
+    end()

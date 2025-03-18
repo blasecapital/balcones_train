@@ -1,9 +1,0 @@
-{
-    "hour_sin": "float32",
-    "hour_cos": "float32",
-    "pair_AUDUSD": "int64",
-    "pair_CHFJPY": "int64",
-    "pair_EURUSD": "int64",
-    "pair_USDJPY": "int64",
-    "pair_USDMXN": "int64"
-}

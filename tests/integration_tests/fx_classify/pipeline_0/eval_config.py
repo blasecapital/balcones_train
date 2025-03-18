@@ -77,7 +77,7 @@ config = {
         "asset_col": "pair",
         # The custom function must use df as an arguement
         "custom_func": True,
-        "custom_func_path": ('/workspace/tests/evaluation/test_custom_eval_funcs.py'),
+        "custom_func_path": ('/workspace/tests/integration_tests/fx_classify/pipeline_0/pipeline_0_eval_fn.py'),
         "custom_func_name": "calculate_running_profit"
         }
     }

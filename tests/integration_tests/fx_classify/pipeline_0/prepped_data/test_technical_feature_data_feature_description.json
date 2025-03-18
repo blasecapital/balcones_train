@@ -1,5 +1,0 @@
-{
-    "high_vol": "int64",
-    "sma_roc": "float32",
-    "close_to_std_dev": "float32"
-}
